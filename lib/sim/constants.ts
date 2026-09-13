@@ -17,8 +17,8 @@ export const TABLE_Y = { min: -TABLE.d / 2, max: TABLE.d / 2 } as const;
 /** Bag sits at a fixed spot on the right of the table. */
 export const BAG_POS: Vec2 = { x: 20, y: 0 };
 export const BAG_OPENING_MAX = 12;
-/** Every successful placement shrinks the opening by this much (12 -> 9 -> 6). */
-export const BAG_OPENING_STEP = 3;
+/** The opening is constant: the bag is big enough for everything that is packed properly. */
+export const BAG_OPENING_STEP = 0;
 /** Releasing within this radius of the bag center drops the item into the bag. */
 export const BAG_RELEASE_RADIUS = 3;
 /** Observation.bag.openingLooksNarrow threshold. */
@@ -28,7 +28,7 @@ export const BAG_DEPTH = 14;
 export const BAG_HEIGHT = 11;
 
 export const GRIPPER_START_POS: Vec2 = { x: -25, y: 15 };
-export const GRIPPER_START_Z = 8;
+export const GRIPPER_START_Z = 16;
 export const GRIPPER_WIDTH_RANGE = { min: 2, max: 14 } as const;
 export { DEFAULT_GRIPPER_WIDTH };
 
@@ -44,8 +44,16 @@ export const SPONGE_MIN_GRASP_WIDTH = 6;
 /** Travel speeds. */
 export const MOVE_SPEED = 25; // cm/s, xy
 export const Z_SPEED = 20; // cm/s, vertical
-export const LIFT_Z = 8; // cm, carry height
-export const DESCEND_MS = 400;
+export const LIFT_Z = 16; // cm, carry height (clears the bag rim with an object in hand)
+export const DESCEND_MS = 450;
+/** Finger-tip height after `descend` over an object / over the bag / over bare table. */
+export const DESCEND_Z_OBJECT = 1;
+export const DESCEND_Z_BAG = BAG_HEIGHT + 1; // hover above the rim, never inside the bag
+export const DESCEND_Z_TABLE = 1;
+/** `grasp` only works with the finger tips at or below this height. */
+export const GRASP_MAX_Z = 2;
+/** Duration of the marker rolling out of the bag (visible in the scene). */
+export const ROLLOUT_MS = 700;
 
 /** Skill animation durations (ms). */
 export const DURATION = {

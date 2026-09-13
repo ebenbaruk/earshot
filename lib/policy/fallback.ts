@@ -17,7 +17,7 @@ import { clampGripperWidth } from "./command-codec";
 /** Gripper is considered "over" a target within this radius (cm). */
 const XY_TOLERANCE = 1.0;
 /** Gripper is considered "down" at or below this height (cm). */
-const Z_TOUCHING = 0.5;
+const Z_TOUCHING = 2; // finger tips low enough to grasp (GRASP_MAX_Z)
 
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   Math.hypot(a.x - b.x, a.y - b.y);

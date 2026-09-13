@@ -36,6 +36,12 @@ import {
   HISTORY_CAPACITY,
   HISTORY_MS,
   LIFT_Z,
+  DESCEND_Z_BAG,
+  DESCEND_Z_OBJECT,
+  DESCEND_Z_TABLE,
+  GRASP_MAX_Z,
+  ROLLOUT_MS,
+  TICK_MS,
   MAX_CONSECUTIVE_FAILURES,
   MAX_RUN_MS,
   MOVE_SPEED,
@@ -126,7 +132,10 @@ export function createEngine(seed: number): Engine {
   let activity: Activity | null = null;
   let pending: { command: SkillCommand; settle: (o: SkillOutcome) => void } | null = null;
   let rolloutTicks = 0;
+  let rolloutTotal = 0;
   let rolledOutId: ObjectId | null = null;
+  let rolloutFrom: Vec2 = { x: 0, y: 0 };
+  let rolloutTo: Vec2 = { x: 0, y: 0 };
   let history: RingBuffer<WorldState> = new RingBuffer<WorldState>(HISTORY_CAPACITY);
   let recent: Array<{ command: SkillCommand; outcome: SkillOutcome }> = [];
   let current: WorldState;
@@ -176,6 +185,7 @@ export function createEngine(seed: number): Engine {
     history = new RingBuffer<WorldState>(HISTORY_CAPACITY);
     recent = [];
     rolloutTicks = 0;
+    rolloutTotal = 0;
     rolledOutId = null;
     current = snapshot(world);
   }
@@ -339,15 +349,24 @@ export function createEngine(seed: number): Engine {
 
       case "descend": {
         const from = world.gripper.z;
-        const duration = from <= 0 ? DURATION.min : (from / LIFT_Z) * DESCEND_MS;
+        // Never through the table, never into the bag: stop at the object,
+        // hover above the bag rim, or stop just above the table.
+        const overBag = dist(world.gripper.pos, world.bag.pos) <= BAG_RELEASE_RADIUS;
+        const target = overBag
+          ? DESCEND_Z_BAG
+          : objectUnderGripper()
+            ? DESCEND_Z_OBJECT
+            : DESCEND_Z_TABLE;
+        const to = Math.min(from, target);
+        const duration = from - to <= 0.01 ? DURATION.min : ((from - to) / LIFT_Z) * DESCEND_MS;
         return mk(
           "ok",
           duration,
           (p) => {
-            world.gripper.z = lerp(from, 0, p);
+            world.gripper.z = lerp(from, to, p);
           },
           () => {
-            world.gripper.z = 0;
+            world.gripper.z = to;
           },
         );
       }
@@ -369,7 +388,7 @@ export function createEngine(seed: number): Engine {
 
       case "grasp": {
         if (world.gripper.holding) return mk("blocked", DURATION.min, noop, noop);
-        if (world.gripper.z > 0.01) return mk("blocked", DURATION.min, noop, noop);
+        if (world.gripper.z > GRASP_MAX_Z) return mk("blocked", DURATION.min, noop, noop);
 
         const candidate = objectUnderGripper();
         if (!candidate) return mk("missed", DURATION.grasp, noop, noop);
@@ -457,7 +476,10 @@ export function createEngine(seed: number): Engine {
             });
             world.bag.contents = world.bag.contents.filter((c) => c !== "marker");
             rolledOutId = "marker";
-            rolloutTicks = 1;
+            rolloutTicks = Math.ceil(ROLLOUT_MS / TICK_MS);
+            rolloutFrom = { ...world.bag.pos };
+            rolloutTo = { ...marker.pos };
+            marker.pos = { ...world.bag.pos };
           }
         });
       }
@@ -528,14 +550,19 @@ export function createEngine(seed: number): Engine {
     step(dtMs: number) {
       if (world.status !== "running" && world.status !== "paused") return;
 
-      // A rolled-out object stays in the "rolled_out" state for exactly one tick
-      // (so the UI can flash it) and is then back on the table.
-      if (rolloutTicks > 0) {
+      // A rolled-out object rolls from the bag to its landing spot over
+      // ROLLOUT_MS (state "rolled_out" while moving), then rests on the table.
+      if (rolloutTicks > 0 && rolledOutId) {
+        if (rolloutTotal === 0) rolloutTotal = rolloutTicks;
         rolloutTicks -= 1;
-        if (rolloutTicks === 0 && rolledOutId) {
-          const o = obj(rolledOutId);
+        const o = obj(rolledOutId);
+        const p = 1 - rolloutTicks / rolloutTotal;
+        const ease = 1 - (1 - p) * (1 - p);
+        o.pos = { x: lerp(rolloutFrom.x, rolloutTo.x, ease), y: lerp(rolloutFrom.y, rolloutTo.y, ease) };
+        if (rolloutTicks === 0) {
           if (o.state === "rolled_out") o.state = "on_table";
           rolledOutId = null;
+          rolloutTotal = 0;
         }
       }
 

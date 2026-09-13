@@ -7,6 +7,11 @@ import {
   BAG_OPENING_MAX,
   GRIPPER_START_POS,
   MAX_CONSECUTIVE_FAILURES,
+  BAG_HEIGHT,
+  DESCEND_Z_BAG,
+  DESCEND_Z_OBJECT,
+  LIFT_Z,
+  ROLLOUT_MS,
   PERCEPTION_NOISE,
   TAPE_GRASP_OFFSET,
   TICK_MS,
@@ -145,12 +150,11 @@ describe("quirk 1 — tape holder grasp point", () => {
 });
 
 describe("quirk 2 — sponge must be squeezed", () => {
-  it("is blocked uncompressed once the opening has shrunk, and goes in after squeeze", async () => {
+  it("is blocked uncompressed whatever the opening, and goes in after squeeze", async () => {
     const e = createEngine(SEED);
     e.start();
-    // Pack the marker first so the opening drops from 12 to 9.
     await pack(e, "marker");
-    expect(e.world.bag.opening).toBe(9);
+    expect(e.world.bag.opening).toBe(BAG_OPENING_MAX);
 
     await runSequence(e, [
       { skill: "move_to", target: "sponge" },
@@ -198,8 +202,10 @@ describe("quirk 3 — the marker rolls out", () => {
     expect(e.world.bag.contents).not.toContain("marker");
     expect(e.world.stagesDone).toBe(1); // tape in, marker out
 
-    // rolled_out lasts one tick for the UI, then the marker is back on the table.
+    // The marker rolls for ROLLOUT_MS (state "rolled_out"), then rests on the table.
     await idleTicks(e, 2);
+    expect(obj(e.world, "marker").state).toBe("rolled_out");
+    await idleTicks(e, Math.ceil(ROLLOUT_MS / TICK_MS));
     expect(obj(e.world, "marker").state).toBe("on_table");
     expect(obj(e.world, "marker").pos.x).toBeCloseTo(e.world.bag.pos.x + 6, 5);
   });
@@ -218,37 +224,37 @@ describe("quirk 3 — the marker rolls out", () => {
   });
 });
 
-describe("quirk 4 — bag opening", () => {
-  it("shrinks by 3 per placement and is restored by widen_bag", async () => {
+describe("bag opening", () => {
+  it("stays constant across placements; widen_bag is a harmless no-op", async () => {
     const e = createEngine(SEED);
     e.start();
     expect(e.world.bag.opening).toBe(BAG_OPENING_MAX);
     await pack(e, "sponge");
-    expect(e.world.bag.opening).toBe(9);
     await pack(e, "tape_holder", 7.5);
-    expect(e.world.bag.opening).toBe(6);
-
-    await runSkill(e, { skill: "widen_bag" });
     expect(e.world.bag.opening).toBe(BAG_OPENING_MAX);
-  });
-
-  it("blocks an item wider than the opening", async () => {
-    const e = createEngine(SEED);
-    e.start();
-    await pack(e, "marker"); // 12 -> 9
-    await pack(e, "sponge"); // 9 -> 6 (and the marker rolls out)
-    await pack(e, "tape_holder", 7.5); // 7 cm wide > 6 cm opening
-    expect(obj(e.world, "tape_holder").state).toBe("held");
-    expect(e.world.lastSkill?.outcome).toBe("blocked");
-  });
-
-  it("reports openingLooksNarrow only below 7", async () => {
-    const e = createEngine(SEED);
-    e.start();
+    const r = await runSkill(e, { skill: "widen_bag" });
+    expect(r.outcome).toBe("ok");
+    expect(e.world.bag.opening).toBe(BAG_OPENING_MAX);
     expect(e.getObservation().bag.openingLooksNarrow).toBe(false);
-    await pack(e, "sponge");
-    await pack(e, "tape_holder", 7.5); // opening 6
-    expect(e.getObservation().bag.openingLooksNarrow).toBe(true);
+  });
+});
+
+describe("gripper heights", () => {
+  it("descends to the object, hovers above the bag rim, and grasps only when low", async () => {
+    const e = createEngine(SEED);
+    e.start();
+    await runSequence(e, [{ skill: "move_to", target: "sponge" }, { skill: "descend" }]);
+    expect(e.world.gripper.z).toBeCloseTo(DESCEND_Z_OBJECT, 5);
+    await runSequence(e, [{ skill: "grasp" }, { skill: "lift" }]);
+    expect(e.world.gripper.z).toBeCloseTo(LIFT_Z, 5);
+    await runSequence(e, [{ skill: "move_to", target: "bag" }, { skill: "descend" }]);
+    expect(e.world.gripper.z).toBeCloseTo(DESCEND_Z_BAG, 5);
+    expect(e.world.gripper.z).toBeGreaterThan(BAG_HEIGHT);
+    // Too high to grasp from the carry height.
+    await runSequence(e, [{ skill: "release" }, { skill: "lift" }, { skill: "move_to", target: "marker" }]);
+    expect(obj(e.world, "sponge").state).toBe("held"); // uncompressed sponge was blocked
+    const r = await runSkill(e, { skill: "grasp" });
+    expect(r.outcome).toBe("blocked");
   });
 });
 

@@ -42,6 +42,8 @@ const DEFAULTS = `## How to pack an object (canonical sequence)
 ## Default heuristics
 - Pack the object nearest to the gripper first, then the next nearest, and so on.
 - Only one object can be held at a time; after release, start the next object from step 1.
+- Always set_gripper for the object you are about to grasp (its width + 0.5), not for a previous target.
+- Never repeat a skill that just returned ok with identical parameters (e.g. set_gripper twice): move on to the next step.
 - If bag.openingLooksNarrow is true, widen_bag before releasing into the bag.
 - Emit stop ONLY when bag.contents lists all three objects (sponge, tape_holder, marker). If any object is still on_table or held, you are not done.
 

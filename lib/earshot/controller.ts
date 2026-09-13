@@ -29,7 +29,9 @@ import { useRunsStore } from "@/store/useRunsStore";
 import { useSessionStore } from "./session";
 import { requestDecisionWithMeta, requestDistill } from "@/lib/policy/client";
 import { fallbackDecision } from "@/lib/policy/fallback";
-import { parseCorrectionFast } from "@/lib/corrections/grammar";
+import { extractOrderHint, parseCorrectionFast } from "@/lib/corrections/grammar";
+import { resolveOrderHint } from "@/lib/corrections/order";
+import { applyConstraints, emptyConstraints, learnFromCorrection, type RunConstraints } from "./constraints";
 import { parseCorrection } from "@/lib/corrections/parse";
 import { findStopWord, normalizeCorrection } from "@/lib/voice/stopwords";
 
@@ -45,6 +47,7 @@ let lastStopT: number | null = null; // world.t when the last stop landed; consu
 let inFlightDecision: PolicyDecision | null = null; // the skill the policy is executing right now
 let lastCommandKey: string | null = null; // watchdog against a policy that repeats itself
 let repeatCount = 0;
+let constraints: RunConstraints = emptyConstraints(); // operator facts that hold for the run
 let correctionQueue: Promise<void> = Promise.resolve();
 
 const session = () => useSessionStore.getState();
@@ -209,9 +212,14 @@ async function policyLoop(): Promise<void> {
         repeatCount = 0;
         lastCommandKey = null;
       }
+      const shaped = applyConstraints(constraints, decision.command, engine().getObservation());
+      if (shaped.note) decision = { command: shaped.command, reasoning: `${decision.reasoning} [${shaped.note}]` };
       session().set({ decision });
       inFlightDecision = decision;
-      await execute(decision.command);
+      const out = await execute(decision.command);
+      if (shaped.followUp && out === "ok" && engine().world.status === "running") {
+        await execute(shaped.followUp);
+      }
       inFlightDecision = null;
     }
   } finally {
@@ -274,6 +282,9 @@ async function applyCorrection(input: CorrectionInput): Promise<void> {
   const t0 = performance.now();
   let command: SkillCommand | null = parseCorrectionFast(text);
   let parseSource: ParseSource = input.source === "text" ? "text" : "grammar";
+  const orderHint = extractOrderHint(text);
+  const obsAtUtterance = e.getObservation();
+  if (!command && orderHint) command = resolveOrderHint(orderHint, obsAtUtterance);
   if (!command) {
     const parsed = await parseCorrection(text, e.getObservation());
     command = parsed.command;
@@ -339,6 +350,7 @@ async function applyCorrection(input: CorrectionInput): Promise<void> {
   loopEpoch++;
   if (running) e.pause();
   const outcome: SkillOutcome = await execute(command);
+  if (outcome === "ok") learnFromCorrection(constraints, command, obsAtUtterance, orderHint);
   runs.updateCorrection(id, { outcome });
   session().set({ lastCorrection: { ...event, outcome } });
   // Never resume over a stop that landed while we were parsing.
@@ -372,6 +384,7 @@ export const controller = {
     if (e.world.status === "idle") {
       lastCommandKey = null;
       repeatCount = 0;
+      constraints = emptyConstraints();
       beginRun();
       useSimStore.getState().start();
     } else if (e.world.status === "paused") {
@@ -393,6 +406,7 @@ export const controller = {
     engine().reset(next);
     frozenContext = null;
     lastStopT = null;
+    constraints = emptyConstraints();
     s.set({ seed: next, decision: null, policyThinking: false, stopFlash: null, lastCorrection: null });
   },
 
