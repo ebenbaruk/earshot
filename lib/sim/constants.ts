@@ -5,7 +5,7 @@
  */
 
 import type { ObjectId, SimObject, Vec2 } from "@/lib/types";
-import { DEFAULT_GRIPPER_WIDTH } from "@/lib/types";
+import { DEFAULT_GRIPPER_WIDTH, OBJECT_COUNT } from "@/lib/types";
 
 /** Simulation tick: 20 Hz. */
 export const TICK_MS = 50;
@@ -33,7 +33,7 @@ export const GRIPPER_WIDTH_RANGE = { min: 2, max: 14 } as const;
 export { DEFAULT_GRIPPER_WIDTH };
 
 /** Max xy distance from an object's grasp point for a grasp to hold. */
-export const GRASP_RADIUS = 1.0;
+export const GRASP_RADIUS = 1.5;
 /** Extra slack around an object footprint that still counts as "the gripper is over it". */
 export const OVER_OBJECT_MARGIN = 1.0;
 /** Non-deformable objects need width >= w + this. */
@@ -81,7 +81,7 @@ export const HISTORY_CAPACITY = Math.ceil(HISTORY_MS / TICK_MS) + 8;
 /** Run termination. */
 export const MAX_RUN_MS = 300_000;
 export const MAX_CONSECUTIVE_FAILURES = 6;
-export const STAGE_COUNT = 3;
+export const STAGE_COUNT = OBJECT_COUNT;
 
 /** The tape holder can only be picked up by its ring, 2 cm left of the visual centroid. */
 export const TAPE_GRASP_OFFSET: Vec2 = { x: -2, y: 0 };
@@ -101,7 +101,13 @@ export const OBJECT_SPECS: readonly ObjectSpec[] = [
   { id: "sponge", label: "Sponge", size: { w: 8, d: 5, h: 3 } },
   { id: "tape_holder", label: "Tape holder", size: { w: 7, d: 7, h: 3 } },
   { id: "marker", label: "Marker", size: { w: 1.5, d: 12, h: 1.5 } },
+  { id: "egg", label: "Egg", size: { w: 4.5, d: 6, h: 4.5 } },
 ] as const;
+
+/** The egg cracks if released over the bag with the finger tips above this height (hidden quirk). */
+export const EGG_SAFE_RELEASE_Z = DESCEND_Z_BAG + 0.5;
+/** How long the cracked egg (and its mess) stays visible before a fresh egg is put back on the table. */
+export const CRACK_MS = 900;
 
 /** Footprint an object actually occupies right now (the sponge shrinks when squeezed). */
 export function effectiveSize(obj: Pick<SimObject, "id" | "size" | "compressed">) {

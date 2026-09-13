@@ -22,7 +22,7 @@ import { mulberry32, randRange, randSigned, type Rng } from "./seed";
 import { PERCEPTION_NOISE } from "./constants";
 
 /** Objects stay this far apart (center to center). */
-const MIN_SEPARATION = 11;
+const MIN_SEPARATION = 10;
 /** Objects stay clear of the bag. */
 const MIN_BAG_CLEARANCE = 14;
 /** The marker must win "nearest to the gripper" by this margin. */
@@ -45,6 +45,7 @@ const FALLBACK: Record<ObjectId, Vec2> = {
   marker: { x: -18, y: 10 },
   sponge: { x: -4, y: -8 },
   tape_holder: { x: -20, y: -9 },
+  egg: { x: -6, y: 12 },
 };
 
 function acceptable(positions: Map<ObjectId, Vec2>): boolean {

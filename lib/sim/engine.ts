@@ -42,6 +42,8 @@ import {
   GRASP_MAX_Z,
   ROLLOUT_MS,
   TICK_MS,
+  EGG_SAFE_RELEASE_Z,
+  CRACK_MS,
   MAX_CONSECUTIVE_FAILURES,
   MAX_RUN_MS,
   MOVE_SPEED,
@@ -93,6 +95,7 @@ const FAILURE_OUTCOMES: ReadonlySet<SkillOutcome> = new Set<SkillOutcome>([
   "missed",
   "blocked",
   "rolled_out",
+  "cracked",
 ]);
 
 function snapshot(w: WorldState): WorldState {
@@ -107,6 +110,7 @@ function snapshot(w: WorldState): WorldState {
       size: { ...o.size },
       state: o.state,
       compressed: o.compressed,
+      ...(o.cracks !== undefined ? { cracks: o.cracks } : {}),
     })),
     gripper: {
       pos: { x: w.gripper.pos.x, y: w.gripper.pos.y },
@@ -136,6 +140,8 @@ export function createEngine(seed: number): Engine {
   let rolledOutId: ObjectId | null = null;
   let rolloutFrom: Vec2 = { x: 0, y: 0 };
   let rolloutTo: Vec2 = { x: 0, y: 0 };
+  let crackTicks = 0;
+  let spawnPos: Partial<Record<ObjectId, Vec2>> = {};
   let history: RingBuffer<WorldState> = new RingBuffer<WorldState>(HISTORY_CAPACITY);
   let recent: Array<{ command: SkillCommand; outcome: SkillOutcome }> = [];
   let current: WorldState;
@@ -187,6 +193,8 @@ export function createEngine(seed: number): Engine {
     rolloutTicks = 0;
     rolloutTotal = 0;
     rolledOutId = null;
+    crackTicks = 0;
+    spawnPos = Object.fromEntries(world.objects.map((o) => [o.id, { ...o.pos }]));
     current = snapshot(world);
   }
 
@@ -352,21 +360,24 @@ export function createEngine(seed: number): Engine {
         // Never through the table, never into the bag: stop at the object,
         // hover above the bag rim, or stop just above the table.
         const overBag = dist(world.gripper.pos, world.bag.pos) <= BAG_RELEASE_RADIUS;
-        const target = overBag
-          ? DESCEND_Z_BAG
-          : objectUnderGripper()
-            ? DESCEND_Z_OBJECT
-            : DESCEND_Z_TABLE;
+        const under = overBag ? null : objectUnderGripper();
+        const target = overBag ? DESCEND_Z_BAG : under ? DESCEND_Z_OBJECT : DESCEND_Z_TABLE;
         const to = Math.min(from, target);
+        // Pre-grasp opening: like a real gripper, the fingers open to fit the
+        // object underneath while coming down (visible width, not a hidden rule).
+        const fromW = world.gripper.width;
+        const toW = under && !world.gripper.holding ? Math.max(fromW, requiredGripperWidth(under)) : fromW;
         const duration = from - to <= 0.01 ? DURATION.min : ((from - to) / LIFT_Z) * DESCEND_MS;
         return mk(
           "ok",
           duration,
           (p) => {
             world.gripper.z = lerp(from, to, p);
+            world.gripper.width = lerp(fromW, toW, p);
           },
           () => {
             world.gripper.z = to;
+            world.gripper.width = toW;
           },
         );
       }
@@ -445,6 +456,19 @@ export function createEngine(seed: number): Engine {
             o.state = "on_table";
             o.pos = drop;
             world.gripper.holding = null;
+          });
+        }
+
+        // Fragile item released from too high: irreversible. The egg breaks in
+        // the bag; after CRACK_MS a fresh one is put back where it started.
+        if (h.id === "egg" && world.gripper.z > EGG_SAFE_RELEASE_Z) {
+          return mk("cracked", DURATION.release, noop, () => {
+            const egg = obj("egg");
+            egg.state = "cracked";
+            egg.pos = { ...world.bag.pos };
+            egg.cracks = (egg.cracks ?? 0) + 1;
+            world.gripper.holding = null;
+            crackTicks = Math.ceil(CRACK_MS / TICK_MS);
           });
         }
 
@@ -563,6 +587,17 @@ export function createEngine(seed: number): Engine {
           if (o.state === "rolled_out") o.state = "on_table";
           rolledOutId = null;
           rolloutTotal = 0;
+        }
+      }
+
+      if (crackTicks > 0) {
+        crackTicks -= 1;
+        if (crackTicks === 0) {
+          const egg = obj("egg");
+          if (egg.state === "cracked") {
+            egg.state = "on_table";
+            egg.pos = { ...(spawnPos.egg ?? egg.pos) };
+          }
         }
       }
 

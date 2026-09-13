@@ -14,10 +14,12 @@ import { resolveOrderHint } from "@/lib/corrections/order";
 export interface RunConstraints {
   graspOffset: Partial<Record<ObjectId, Vec2>>;
   deferLast: ObjectId | null;
+  /** objects the operator told us to lower before releasing ("lower it first") */
+  releaseLow: Partial<Record<ObjectId, true>>;
 }
 
 export function emptyConstraints(): RunConstraints {
-  return { graspOffset: {}, deferLast: null };
+  return { graspOffset: {}, deferLast: null, releaseLow: {} };
 }
 
 /** Object the gripper is currently closest to (within `radius` cm), from the observation. */
@@ -44,6 +46,7 @@ export function learnFromCorrection(
   orderHint: { object: ObjectId; position: "first" | "last" } | null,
 ): void {
   if (orderHint?.position === "last") c.deferLast = orderHint.object;
+  if (command.skill === "descend" && obsBefore.gripper.holding) c.releaseLow[obsBefore.gripper.holding] = true;
   if (command.skill === "nudge" && !obsBefore.gripper.holding) {
     const id = objectNear(obsBefore);
     if (id) {
@@ -61,7 +64,11 @@ export function applyConstraints(
   c: RunConstraints,
   command: SkillCommand,
   obs: Observation,
-): { command: SkillCommand; followUp: SkillCommand | null; note: string | null } {
+): { command: SkillCommand; preStep: SkillCommand | null; followUp: SkillCommand | null; note: string | null } {
+  // "lower it first": descend before releasing this object, if not already low.
+  if (command.skill === "release" && obs.gripper.holding && c.releaseLow[obs.gripper.holding] && obs.gripper.z > 13) {
+    return { command, preStep: { skill: "descend" }, followUp: null, note: `operator said: lower the ${obs.gripper.holding} first` };
+  }
   if (command.skill === "move_to" && typeof command.target === "string" && command.target !== "bag") {
     const target = command.target;
     // "X last": while anything else remains, redirect to the nearest other object.
@@ -75,10 +82,11 @@ export function applyConstraints(
     if (off && (off.x !== 0 || off.y !== 0)) {
       return {
         command,
+        preStep: null,
         followUp: { skill: "nudge", dx: off.x, dy: off.y },
         note: `operator offset for ${target}: (${off.x}, ${off.y})`,
       };
     }
   }
-  return { command, followUp: null, note: null };
+  return { command, preStep: null, followUp: null, note: null };
 }

@@ -52,6 +52,7 @@ const DEFAULTS = `## How to pack an object (canonical sequence)
 - slipped or missed: retry the same approach at most ONCE; if it fails again, lift and re-approach, or move on to a different object. Never set the gripper narrower than the object width + 0.5 — a narrower gripper always slips.
 - blocked on release: the bag mouth is too small — widen_bag, then release again.
 - rolled_out: an item left the bag; re-plan rather than repeating what you just did.
+- cracked: the item broke on release and a fresh one was put back on the table; do not repeat the exact same release.
 - interrupted: the operator stopped you; follow whatever they asked.
 - A nudge, set_gripper, squeeze or widen_bag in the recent history that you did not plan was the human operator correcting you. Keep its effect: continue from the gripper's CURRENT position and width (descend / grasp next) and never move back to the estimated centre to undo it.
 

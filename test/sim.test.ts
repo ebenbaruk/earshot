@@ -8,6 +8,7 @@ import {
   GRIPPER_START_POS,
   MAX_CONSECUTIVE_FAILURES,
   BAG_HEIGHT,
+  CRACK_MS,
   DESCEND_Z_BAG,
   DESCEND_Z_OBJECT,
   LIFT_Z,
@@ -41,6 +42,8 @@ async function pack(engine: Engine, id: ObjectId, width?: number, opts: { raw?: 
   cmds.push({ skill: "grasp" }, { skill: "lift" }, { skill: "move_to", target: "bag" });
   // The sponge never fits uncompressed; squeeze it unless the test opts out.
   if (id === "sponge" && !opts.raw) cmds.push({ skill: "squeeze" });
+  // The egg cracks if released from carry height; lower it first unless the test opts out.
+  if (id === "egg" && !opts.raw) cmds.push({ skill: "descend" });
   await runSequence(engine, cmds);
   return runSkill(engine, { skill: "release" });
 }
@@ -122,7 +125,8 @@ describe("quirk 1 — tape holder grasp point", () => {
     e.start();
     const r = await runSequence(e, [
       { skill: "move_to", target: "tape_holder" },
-      { skill: "descend" },
+      { skill: "descend" }, // auto-opens to 7.5 …
+      { skill: "set_gripper", width: 5 }, // … then the policy narrows it again
       { skill: "nudge", dx: TAPE_GRASP_OFFSET.x, dy: TAPE_GRASP_OFFSET.y },
       { skill: "grasp" },
     ]);
@@ -133,7 +137,7 @@ describe("quirk 1 — tape holder grasp point", () => {
     const e = createEngine(SEED);
     e.start();
     const r = await runSequence(e, [
-      { skill: "move_to", target: { x: 0, y: 18 } },
+      { skill: "move_to", target: { x: 12, y: -17 } }, // bare table (objects live at x ≤ 4, bag at x = 20)
       { skill: "descend" },
       { skill: "grasp" },
     ]);
@@ -216,11 +220,46 @@ describe("quirk 3 — the marker rolls out", () => {
     await pack(e, "sponge");
     expect(obj(e.world, "sponge").state).toBe("in_bag");
     await pack(e, "tape_holder", 7.5);
+    await pack(e, "egg");
     const last = await pack(e, "marker");
     expect(last.outcome).toBe("ok");
     expect(obj(e.world, "marker").state).toBe("in_bag");
-    expect(e.world.stagesDone).toBe(3);
+    expect(e.world.stagesDone).toBe(4);
     expect(e.world.status).toBe("succeeded");
+  });
+});
+
+describe("quirk 4 — the egg is fragile", () => {
+  it("cracks when released from carry height, then a fresh egg reappears on the table", async () => {
+    const e = createEngine(SEED);
+    e.start();
+    const spawn = { ...obj(e.world, "egg").pos };
+    const r = await pack(e, "egg", undefined, { raw: true });
+    expect(r.outcome).toBe("cracked");
+    expect(obj(e.world, "egg").state).toBe("cracked");
+    expect(obj(e.world, "egg").cracks).toBe(1);
+    expect(e.world.gripper.holding).toBeNull();
+    expect(e.world.stagesDone).toBe(0);
+    expect(e.world.consecutiveFailures).toBe(1);
+    await idleTicks(e, Math.ceil(CRACK_MS / TICK_MS) + 1);
+    expect(obj(e.world, "egg").state).toBe("on_table");
+    expect(obj(e.world, "egg").pos).toEqual(spawn);
+  });
+
+  it("goes in safely when the gripper descends over the bag first", async () => {
+    const e = createEngine(SEED);
+    e.start();
+    const r = await pack(e, "egg");
+    expect(r.outcome).toBe("ok");
+    expect(obj(e.world, "egg").state).toBe("in_bag");
+    expect(e.world.stagesDone).toBe(1);
+  });
+
+  it("the gripper opens to fit the object while descending", async () => {
+    const e = createEngine(SEED);
+    e.start();
+    await runSequence(e, [{ skill: "set_gripper", width: 3 }, { skill: "move_to", target: "tape_holder" }, { skill: "descend" }]);
+    expect(e.world.gripper.width).toBeCloseTo(7.5, 5);
   });
 });
 

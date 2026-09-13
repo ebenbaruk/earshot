@@ -11,8 +11,9 @@
  *   final:  transcript → grammar (sub-ms) or /api/correction → engine.execute()
  *           while paused → resume → the loop re-observes and continues.
  */
-import type {
-  CorrectionEvent,
+import {
+  OBJECT_COUNT,
+  type CorrectionEvent,
   ParseSource,
   PolicyDecision,
   PolicyVersion,
@@ -191,7 +192,7 @@ async function policyLoop(): Promise<void> {
       if (epoch !== loopEpoch || engine().world.status !== "running") continue;
 
       if (decision.command.skill === "stop") {
-        if (engine().world.stagesDone >= 3) {
+        if (engine().world.stagesDone >= OBJECT_COUNT) {
           session().set({ decision });
           engine().pause();
           continue;
@@ -216,6 +217,7 @@ async function policyLoop(): Promise<void> {
       if (shaped.note) decision = { command: shaped.command, reasoning: `${decision.reasoning} [${shaped.note}]` };
       session().set({ decision });
       inFlightDecision = decision;
+      if (shaped.preStep) await execute(shaped.preStep);
       const out = await execute(decision.command);
       if (out === "ok" && (decision.command.skill === "grasp" || decision.command.skill === "release")) recentKeys = [];
       if (shaped.followUp && out === "ok" && engine().world.status === "running") {

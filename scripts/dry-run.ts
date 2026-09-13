@@ -13,7 +13,7 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { CorrectionEvent, Observation, PolicyDecision, PolicyVersion, RunRecord, SkillCommand, SkillOutcome } from "../lib/types";
+import { OBJECT_COUNT, type CorrectionEvent, type Observation, type PolicyDecision, type PolicyVersion, type RunRecord, type SkillCommand, type SkillOutcome } from "../lib/types";
 import { createEngine } from "../lib/sim/engine";
 import { runSkill } from "../lib/sim/driver";
 import { BASE_POLICY } from "../lib/policy/base-policy";
@@ -61,6 +61,10 @@ const demoOperator: Operator = {
       Math.hypot(nearTape.estimatedPos.x - obs.gripper.pos.x, nearTape.estimatedPos.y - obs.gripper.pos.y) < 4 &&
       !saidBefore.has("tape-left")
     ) { saidBefore.add("tape-left"); return "stop, a bit to the left"; }
+    // Holding the egg over the bag → preventive "lower it first" (an irreversible mistake otherwise).
+    if (last.command.skill === "move_to" && last.command.target === "bag" && obs.gripper.holding === "egg" && !saidBefore.has("egg-low")) {
+      saidBefore.add("egg-low"); return "stop, lower it first";
+    }
     // Sponge blocked at the bag → squeeze.
     if (last.command.skill === "release" && last.outcome === "blocked" && obs.gripper.holding === "sponge" && !saidBefore.has("squeeze")) {
       saidBefore.add("squeeze"); return "stop, squeeze it first";
@@ -107,13 +111,14 @@ async function runOnce(seed: number, policy: PolicyVersion, operator: Operator, 
     const meta = await decideWithMeta(obs, policy);
     llmMs += meta.latencyMs; if (meta.fallback) fallbacks++;
     let decision = meta.decision;
-    if (decision.command.skill === "stop" && e.world.stagesDone < 3) {
+    if (decision.command.skill === "stop" && e.world.stagesDone < OBJECT_COUNT) {
       decision = { ...fallbackDecision(obs), reasoning: "[override: early stop]" };
     }
     recent.push(JSON.stringify(decision.command)); if (recent.length > 4) recent.shift();
     if (isDithering(recent)) { decision = { ...fallbackDecision(obs), reasoning: "[override: looping]" }; recent = []; }
     const shaped = applyConstraints(constraints, decision.command, obs);
     inFlight = decision;
+    if (shaped.preStep) await runSkill(e, shaped.preStep);
     const r = await runSkill(e, shaped.command);
     let outcome = r.outcome;
     if (shaped.followUp && outcome === "ok" && e.world.status === "running") outcome = (await runSkill(e, shaped.followUp)).outcome;
@@ -145,7 +150,7 @@ async function main() {
       v1 = await distill({ policy: BASE_POLICY, corrections: a.corrections, runs: [a.record] });
     } catch (err) {
       console.log(`   distill FAILED: ${(err as Error).message}`);
-      rows.push(`seed ${String(seed).padEnd(4)} | v0+operator: ${a.status} ${a.record.stagesDone}/3, ${a.record.interventions} corrections | distill failed`);
+      rows.push(`seed ${String(seed).padEnd(4)} | v0+operator: ${a.status} ${a.record.stagesDone}/${OBJECT_COUNT}, ${a.record.interventions} corrections | distill failed`);
       continue;
     }
     console.log(`   v${v1.version} in ${Date.now() - t0} ms: ${v1.rules.length} rules`);
@@ -153,7 +158,7 @@ async function main() {
     console.log(`=== seed ${seed} — run B: v1 alone ===`);
     const b = await runOnce(seed, v1, { ...demoOperator, enabled: false }, `run-${seed}-b`);
     console.log(`   ${b.status} stages=${b.record.stagesDone} steps=${b.steps} fallbacks=${b.fallbacks}`);
-    rows.push(`seed ${String(seed).padEnd(4)} | v0+operator: ${a.status.padEnd(9)} ${a.record.stagesDone}/3, ${a.record.interventions} corrections | v1 alone: ${b.status.padEnd(9)} ${b.record.stagesDone}/3`);
+    rows.push(`seed ${String(seed).padEnd(4)} | v0+operator: ${a.status.padEnd(9)} ${a.record.stagesDone}/${OBJECT_COUNT}, ${a.record.interventions} corrections | v1 alone: ${b.status.padEnd(9)} ${b.record.stagesDone}/${OBJECT_COUNT}`);
   }
   console.log("\n" + rows.join("\n"));
 }

@@ -13,7 +13,7 @@ export const SMALL_STEP_CM = 1.5;
 /** default when no magnitude is given */
 export const DEFAULT_STEP_CM = 2;
 /** "a lot" / "more" / "much" */
-export const BIG_STEP_CM = 4;
+export const BIG_STEP_CM = 3;
 
 /** "wider" / "open the gripper" — we do not know the current width server-side. */
 export const WIDE_GRIPPER_CM = 9;
@@ -180,7 +180,7 @@ export function parseCorrectionFast(text: string): SkillCommand | null {
   }
 
   // 9. Lower.
-  if (/\b(down|lower|descend|go down|lower it|baisse|descends|en bas|plus bas)\b/.test(t)) {
+  if (/\b(down|lower|descend|go down|lower it|gently|gentle|careful|carefully|slowly|closer to the bag|doucement|baisse|descends|en bas|plus bas)\b/.test(t)) {
     return { skill: "descend" };
   }
 
