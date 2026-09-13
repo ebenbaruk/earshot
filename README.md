@@ -31,7 +31,14 @@ pnpm dev
 
 Open http://localhost:3000, allow the microphone, press **Run**, and talk.
 
-The policy and the distillation go through the AssemblyAI **LLM Gateway**; your account needs access to the Claude models listed on the [models page](https://www.assemblyai.com/docs/llm-gateway/available-models) (hackathon credits enable them). Without it, the policy loop degrades to a deterministic local planner (badged `[fallback]` in the HUD) and `Distill` reports the Gateway error. `EARSHOT_FAST_MODEL` / `EARSHOT_SMART_MODEL` override the model ids.
+The policy, the correction parser and the distillation are plain OpenAI-style chat completions with JSON-schema structured outputs, so the LLM provider is pluggable:
+
+| `EARSHOT_LLM_PROVIDER` | Endpoint | Default models (fast / smart) |
+|---|---|---|
+| `assemblyai` | AssemblyAI **LLM Gateway** (needs Claude entitlement on the account) | `claude-haiku-4-5-20251001` / `claude-sonnet-4-6` |
+| `gemini` | Google Gemini, OpenAI-compatible endpoint (`GEMINI_API_KEY`) | `gemini-3.5-flash-lite` / `gemini-3.8-flash` |
+
+`EARSHOT_FAST_MODEL` / `EARSHOT_SMART_MODEL` override the ids. If the LLM is unreachable the policy loop degrades to a deterministic local planner (badged `[fallback]` in the HUD) so a demo never stalls; two watchdogs also hand a single step to the planner when the LLM tries to stop early or repeats itself.
 
 Scripts: `pnpm test` (vitest), `pnpm typecheck`, `pnpm dry-run` (headless run of the full loop without a browser).
 

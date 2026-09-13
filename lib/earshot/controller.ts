@@ -43,6 +43,8 @@ let stopFlashTimer: ReturnType<typeof setTimeout> | null = null;
 let frozenContext: WorldState[] | null = null;
 let lastStopT: number | null = null; // world.t when the last stop landed; consumed by the next correction
 let inFlightDecision: PolicyDecision | null = null; // the skill the policy is executing right now
+let lastCommandKey: string | null = null; // watchdog against a policy that repeats itself
+let repeatCount = 0;
 let correctionQueue: Promise<void> = Promise.resolve();
 
 const session = () => useSessionStore.getState();
@@ -195,6 +197,17 @@ async function policyLoop(): Promise<void> {
         // planner for this one step so the run keeps moving.
         const fb = fallbackDecision(engine().getObservation());
         decision = { command: fb.command, reasoning: `[override: policy stopped early] ${fb.reasoning.replace(/^\[fallback\] /, "")}` };
+      }
+      // Watchdog: the same command three times in a row without the world
+      // changing means the policy is looping. Hand one step to the planner.
+      const key = JSON.stringify(decision.command);
+      repeatCount = key === lastCommandKey ? repeatCount + 1 : 1;
+      lastCommandKey = key;
+      if (repeatCount >= 3) {
+        const fb = fallbackDecision(engine().getObservation());
+        decision = { command: fb.command, reasoning: `[override: policy looping] ${fb.reasoning.replace(/^\[fallback\] /, "")}` };
+        repeatCount = 0;
+        lastCommandKey = null;
       }
       session().set({ decision });
       inFlightDecision = decision;
@@ -357,6 +370,8 @@ export const controller = {
       session().set({ decision: null, stopFlash: null, lastCorrection: null });
     }
     if (e.world.status === "idle") {
+      lastCommandKey = null;
+      repeatCount = 0;
       beginRun();
       useSimStore.getState().start();
     } else if (e.world.status === "paused") {
