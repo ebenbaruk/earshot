@@ -11,22 +11,27 @@
 // World
 // ---------------------------------------------------------------------------
 
-export type ObjectId = "sponge" | "tape_holder" | "marker";
+export type ObjectId = "sponge" | "tape_holder" | "marker" | "egg";
+
+/** Number of objects to pack = number of stages in a run. */
+export const OBJECT_COUNT = 4;
 
 export interface Vec2 {
   x: number;
   y: number;
 }
 
-export type ObjectState = "on_table" | "held" | "in_bag" | "rolled_out";
+export type ObjectState = "on_table" | "held" | "in_bag" | "rolled_out" | "cracked";
 
 export interface SimObject {
   id: ObjectId;
-  label: string; // "Sponge", "Tape holder", "Marker"
+  label: string; // "Sponge", "Tape holder", "Marker", "Egg"
   pos: Vec2; // true center on the table (cm)
   size: { w: number; d: number; h: number }; // cm
   state: ObjectState;
   compressed: boolean; // sponge only; false otherwise
+  /** egg only: how many eggs were broken and replaced so far (visual + metrics) */
+  cracks?: number;
 }
 
 export interface GripperState {
@@ -56,7 +61,7 @@ export interface WorldState {
   objects: SimObject[];
   gripper: GripperState;
   bag: BagState;
-  stagesDone: number; // 0..3 = number of items packed AND still in the bag
+  stagesDone: number; // 0..OBJECT_COUNT = number of items packed, intact, AND still in the bag
   lastSkill: { command: SkillCommand; outcome: SkillOutcome } | null;
   consecutiveFailures: number;
 }
@@ -101,10 +106,11 @@ export type SkillOutcome =
   | "slipped" // grasp closed but object slipped out (bad grasp point / width)
   | "missed" // gripper not over any object when grasping
   | "rolled_out" // item left the bag after a later placement
+  | "cracked" // fragile item released from too high: irreversible, a fresh one is put back on the table
   | "blocked" // bag opening too narrow for the item / invalid precondition
   | "interrupted"; // skill was cancelled by a stop
 
-export const DEFAULT_GRIPPER_WIDTH = 6; // cm
+export const DEFAULT_GRIPPER_WIDTH = 8; // cm — wide enough for every object; descend auto-opens if needed
 
 // ---------------------------------------------------------------------------
 // Observation (what the high-level policy sees — NO hidden quirks)
