@@ -5,7 +5,7 @@ import type {
   CorrectionParseResponse,
   Observation,
 } from "@/lib/types";
-import { chatJSON, FAST_MODEL } from "@/lib/llm/gateway";
+import { chatJSON, fastModel } from "@/lib/llm/gateway";
 import { tryToSkillCommand, type FlatCommand } from "@/lib/policy/command-codec";
 import { buildPolicyUserPrompt } from "@/lib/policy/prompt";
 import {
@@ -52,7 +52,7 @@ export async function llmParseCorrection(
     command: FlatCommand;
     confidence: number;
   }>({
-    model: opts.model ?? FAST_MODEL,
+    model: opts.model ?? fastModel(),
     system: SYSTEM_PROMPT,
     user: `Current observation:\n${buildPolicyUserPrompt(observation)}\n\nThe operator said: "${transcript}"${hintLine}\n\nWhich single skill should the robot execute now?`,
     schema: CORRECTION_PARSE_SCHEMA,

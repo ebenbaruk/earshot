@@ -2,7 +2,7 @@
  * The high-level policy step. Server-only (reads ASSEMBLYAI_API_KEY).
  */
 import type { Observation, PolicyDecision, PolicyVersion } from "@/lib/types";
-import { chatJSON, FAST_MODEL, GatewayError } from "@/lib/llm/gateway";
+import { chatJSON, fastModel, GatewayError } from "@/lib/llm/gateway";
 import { toSkillCommand, type FlatCommand } from "./command-codec";
 import { buildPolicySystemPrompt, buildPolicyUserPrompt } from "./prompt";
 import { fallbackDecision } from "./fallback";
@@ -32,7 +32,7 @@ export async function decideWithMeta(
   policy: PolicyVersion,
   opts: DecideOptions = {},
 ): Promise<DecideMeta> {
-  const model = opts.model ?? FAST_MODEL;
+  const model = opts.model ?? fastModel();
   const startedAt = Date.now();
   try {
     const { data, latencyMs } = await chatJSON<{

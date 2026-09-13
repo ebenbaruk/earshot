@@ -6,6 +6,7 @@ import { createLayout } from "@/lib/sim/layout";
 import {
   BAG_OPENING_MAX,
   GRIPPER_START_POS,
+  MAX_CONSECUTIVE_FAILURES,
   PERCEPTION_NOISE,
   TAPE_GRASP_OFFSET,
   TICK_MS,
@@ -235,8 +236,9 @@ describe("quirk 4 — bag opening", () => {
     const e = createEngine(SEED);
     e.start();
     await pack(e, "marker"); // 12 -> 9
-    await pack(e, "sponge", 8.5); // uncompressed sponge is blocked at 9
-    expect(obj(e.world, "sponge").state).toBe("held");
+    await pack(e, "sponge"); // 9 -> 6 (and the marker rolls out)
+    await pack(e, "tape_holder", 7.5); // 7 cm wide > 6 cm opening
+    expect(obj(e.world, "tape_holder").state).toBe("held");
     expect(e.world.lastSkill?.outcome).toBe("blocked");
   });
 
@@ -339,17 +341,12 @@ describe("pause / resume / stop", () => {
 });
 
 describe("run termination", () => {
-  it("fails after 3 consecutive failures", async () => {
+  it("fails after MAX_CONSECUTIVE_FAILURES consecutive failures", async () => {
     const e = createEngine(SEED);
     e.start();
-    await runSequence(e, [
-      { skill: "move_to", target: { x: 0, y: 18 } },
-      { skill: "descend" },
-      { skill: "grasp" },
-      { skill: "grasp" },
-      { skill: "grasp" },
-    ]);
-    expect(e.world.consecutiveFailures).toBeGreaterThanOrEqual(3);
+    await runSequence(e, [{ skill: "move_to", target: { x: 0, y: 18 } }, { skill: "descend" }]);
+    for (let i = 0; i < MAX_CONSECUTIVE_FAILURES; i++) await runSkill(e, { skill: "grasp" });
+    expect(e.world.consecutiveFailures).toBeGreaterThanOrEqual(MAX_CONSECUTIVE_FAILURES);
     expect(e.world.status).toBe("failed");
   });
 

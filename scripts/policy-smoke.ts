@@ -18,7 +18,7 @@ import type {
   PolicyVersion,
   WorldState,
 } from "../lib/types";
-import { FAST_MODEL, SMART_MODEL, chatJSON, listModels } from "../lib/llm/gateway";
+import { fastModel, smartModel, chatJSON, listModels, llmProvider } from "../lib/llm/gateway";
 import { BASE_POLICY } from "../lib/policy/base-policy";
 import { decideWithMeta } from "../lib/policy/decide";
 import { distill } from "../lib/policy/distill";
@@ -229,24 +229,25 @@ const pace = () => new Promise((r) => setTimeout(r, Number(process.env.EARSHOT_S
 const rule = () => line("-".repeat(72));
 
 async function main() {
-  if (!process.env.ASSEMBLYAI_API_KEY) {
-    line("ASSEMBLYAI_API_KEY is not set (looked in .env.local and .env).");
+  if (!process.env.ASSEMBLYAI_API_KEY && !process.env.GEMINI_API_KEY) {
+    line("Neither ASSEMBLYAI_API_KEY nor GEMINI_API_KEY is set (looked in .env.local and .env).");
     process.exit(1);
   }
+  line(`provider              : ${llmProvider()}`);
 
-  line(`configured fast model : ${FAST_MODEL}`);
-  line(`configured smart model: ${SMART_MODEL}`);
+  line(`configured fast model : ${fastModel()}`);
+  line(`configured smart model: ${smartModel()}`);
 
-  let fast = FAST_MODEL;
-  let smart = SMART_MODEL;
+  let fast = fastModel();
+  let smart = smartModel();
   try {
     const models = await listModels();
     const withRF = models.filter((m) => m.supported_parameters.includes("response_format"));
     line(`gateway catalogue: ${models.length} models, ${withRF.length} advertise response_format`);
 
     // The catalogue lists every model; entitlement is per key. Probe.
-    if (!(await canUse(FAST_MODEL))) {
-      line(`  !! this API key is not entitled to ${FAST_MODEL}`);
+    if (!(await canUse(fastModel()))) {
+      line(`  !! this API key is not entitled to ${fastModel()}`);
       const found = await firstEntitled(models.map((m) => m.id));
       if (!found) {
         line("  !! this API key is not entitled to ANY LLM Gateway model.");

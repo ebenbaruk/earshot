@@ -71,8 +71,8 @@ export const HISTORY_MS = 2500;
 export const HISTORY_CAPACITY = Math.ceil(HISTORY_MS / TICK_MS) + 8;
 
 /** Run termination. */
-export const MAX_RUN_MS = 120_000;
-export const MAX_CONSECUTIVE_FAILURES = 3;
+export const MAX_RUN_MS = 300_000;
+export const MAX_CONSECUTIVE_FAILURES = 6;
 export const STAGE_COUNT = 3;
 
 /** The tape holder can only be picked up by its ring, 2 cm left of the visual centroid. */

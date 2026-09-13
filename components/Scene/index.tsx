@@ -28,6 +28,7 @@ function CameraRig() {
     const aspect = size.width / Math.max(1, size.height);
     const fov = aspect >= 1.7 ? 30 : aspect >= 1.3 ? 34 : aspect >= 1.0 ? 38 : 48;
     if ("fov" in camera) {
+      // eslint-disable-next-line react-hooks/immutability -- three.js camera is a mutable object by design
       (camera as { fov: number }).fov = fov;
     }
     camera.lookAt(...LOOK_AT);

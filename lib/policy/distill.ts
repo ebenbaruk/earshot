@@ -15,7 +15,7 @@ import type {
   RunRecord,
   WorldState,
 } from "@/lib/types";
-import { chatJSON, SMART_MODEL } from "@/lib/llm/gateway";
+import { chatJSON, smartModel } from "@/lib/llm/gateway";
 import { describeCommand, toSkillCommand } from "./command-codec";
 import { r05 } from "./prompt";
 import {
@@ -191,8 +191,8 @@ export function mergeDistillation(
     .filter((r) => r && typeof r.when === "string" && typeof r.do === "string")
     .map((r) => ({
       id: `r${ruleIdx++}`,
-      when: r.when.trim(),
-      do: r.do.trim(),
+      when: r.when.trim().replace(/^when\s+/i, ""),
+      do: r.do.trim().replace(/^do\s+/i, ""),
       evidence: Array.isArray(r.evidence) ? r.evidence : [],
       addedInVersion: version,
     }));
@@ -244,7 +244,7 @@ export async function distill(
   opts: DistillOptions = {},
 ): Promise<PolicyVersion> {
   const { data } = await chatJSON<DistillLLMOutput>({
-    model: opts.model ?? SMART_MODEL,
+    model: opts.model ?? smartModel(),
     system: SYSTEM_PROMPT,
     user: buildDistillUserPrompt(req),
     schema: DISTILL_SCHEMA,

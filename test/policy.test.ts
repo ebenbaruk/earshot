@@ -580,8 +580,8 @@ describe("distill() over a mocked gateway", () => {
     });
     vi.doMock("@/lib/llm/gateway", () => ({
       chatJSON,
-      SMART_MODEL: "test-smart-model",
-      FAST_MODEL: "test-fast-model",
+      smartModel: () => "test-smart-model",
+      fastModel: () => "test-fast-model",
       GatewayError: class extends Error {},
     }));
 

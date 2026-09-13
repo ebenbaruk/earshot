@@ -29,10 +29,37 @@ export const GATEWAY_MODELS_URL =
  * NOTE: only models whose `supported_parameters` include `response_format`
  * can be used here — claude-opus-5 / claude-sonnet-5 currently cannot.
  */
-export const FAST_MODEL =
-  process.env.EARSHOT_FAST_MODEL ?? "claude-haiku-4-5-20251001";
-export const SMART_MODEL =
-  process.env.EARSHOT_SMART_MODEL ?? "claude-sonnet-4-6";
+/**
+ * Provider switch. "assemblyai" = AssemblyAI LLM Gateway (default when the
+ * account is entitled to the Claude models). "gemini" = Google's
+ * OpenAI-compatible endpoint (https://ai.google.dev/gemini-api/docs/openai),
+ * same request/response shape, `Authorization: Bearer <GEMINI_API_KEY>`.
+ * Auto-selects gemini when GEMINI_API_KEY is set and no provider is forced.
+ */
+export type LLMProvider = "assemblyai" | "gemini";
+
+export function llmProvider(): LLMProvider {
+  const forced = process.env.EARSHOT_LLM_PROVIDER;
+  if (forced === "gemini" || forced === "assemblyai") return forced;
+  return process.env.GEMINI_API_KEY ? "gemini" : "assemblyai";
+}
+
+export const GEMINI_URL =
+  "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+
+const DEFAULT_MODELS: Record<LLMProvider, { fast: string; smart: string }> = {
+  assemblyai: { fast: "claude-haiku-4-5-20251001", smart: "claude-sonnet-4-6" },
+  // Verified in GET /v1beta/openai/models on 2026-09-13.
+  gemini: { fast: "gemini-3.5-flash-lite", smart: "gemini-3.8-flash" },
+};
+
+/** Resolved at call time so env loaded after import (scripts, tests) is honoured. */
+export function fastModel(): string {
+  return process.env.EARSHOT_FAST_MODEL ?? DEFAULT_MODELS[llmProvider()].fast;
+}
+export function smartModel(): string {
+  return process.env.EARSHOT_SMART_MODEL ?? DEFAULT_MODELS[llmProvider()].smart;
+}
 
 export type JSONSchema = Record<string, unknown>;
 
@@ -93,11 +120,19 @@ export interface ChatJSONResult<T> {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function apiKeyOrThrow(explicit?: string): string {
-  const key = explicit ?? process.env.ASSEMBLYAI_API_KEY;
+  const provider = llmProvider();
+  const envName = provider === "gemini" ? "GEMINI_API_KEY" : "ASSEMBLYAI_API_KEY";
+  const key = explicit ?? process.env[envName];
   if (!key) {
-    throw new GatewayError("ASSEMBLYAI_API_KEY is not set", { status: 0 });
+    throw new GatewayError(`${envName} is not set`, { status: 0 });
   }
   return key;
+}
+
+function endpoint(): { url: string; authorization: (key: string) => string } {
+  return llmProvider() === "gemini"
+    ? { url: GEMINI_URL, authorization: (k) => `Bearer ${k}` }
+    : { url: GATEWAY_URL, authorization: (k) => k };
 }
 
 /** Strip markdown fences / prose and parse the first JSON object in `text`. */
@@ -151,11 +186,12 @@ async function once<T>(
   const startedAt = Date.now();
 
   let res: Response;
+  const ep = endpoint();
   try {
-    res = await fetch(GATEWAY_URL, {
+    res = await fetch(ep.url, {
       method: "POST",
       headers: {
-        Authorization: key,
+        Authorization: ep.authorization(key),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -208,13 +244,13 @@ async function once<T>(
     let detail = bodyText.slice(0, 400);
     try {
       const parsed = JSON.parse(bodyText) as {
-        error?: string;
+        error?: string | { message?: string; status?: string };
         message?: string;
         metadata?: { errors?: string[] };
       };
       detail =
         parsed.metadata?.errors?.join("; ") ??
-        parsed.error ??
+        (typeof parsed.error === "string" ? parsed.error : parsed.error?.message) ??
         parsed.message ??
         detail;
     } catch {
@@ -298,10 +334,14 @@ export async function listModels(apiKey?: string): Promise<
   Array<{ id: string; supported_parameters: string[] }>
 > {
   const key = apiKeyOrThrow(apiKey);
-  const res = await fetch(GATEWAY_MODELS_URL, {
-    headers: { Authorization: key },
-    cache: "no-store",
-  });
+  const gemini = llmProvider() === "gemini";
+  const res = await fetch(
+    gemini ? GEMINI_URL.replace(/chat\/completions$/, "models") : GATEWAY_MODELS_URL,
+    {
+      headers: { Authorization: gemini ? `Bearer ${key}` : key },
+      cache: "no-store",
+    },
+  );
   if (!res.ok) {
     throw new GatewayError(`Gateway HTTP ${res.status} listing models`, {
       status: res.status,
@@ -311,7 +351,8 @@ export async function listModels(apiKey?: string): Promise<
     data?: Array<{ id: string; supported_parameters?: string[] }>;
   };
   return (body.data ?? []).map((m) => ({
-    id: m.id,
-    supported_parameters: m.supported_parameters ?? [],
+    id: m.id.replace(/^models\//, ""),
+    // Gemini's OpenAI-compatible endpoint supports response_format on every chat model.
+    supported_parameters: m.supported_parameters ?? (gemini ? ["response_format"] : []),
   }));
 }
