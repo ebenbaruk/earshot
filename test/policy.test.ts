@@ -238,7 +238,7 @@ describe("prompt", () => {
   it("includes the nearest-first heuristic and the canonical sequence", () => {
     const sys = buildPolicySystemPrompt(BASE_POLICY);
     expect(sys).toContain("nearest to the gripper first");
-    expect(sys).toContain("set_gripper(object width + 0.5)");
+    expect(sys).toContain("the fingers open by themselves");
   });
 
   it("keeps the hidden quirks out of the base prompt", () => {

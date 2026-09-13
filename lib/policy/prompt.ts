@@ -31,21 +31,21 @@ const SKILL_LIBRARY = `## Skill library (the only actions that exist)
 Table frame: origin at the table centre, x grows to the right, y grows away from the operator. Units are centimetres.`;
 
 const DEFAULTS = `## How to pack an object (canonical sequence)
-1. set_gripper(object width + 0.5)
-2. move_to(object)
-3. descend
-4. grasp
-5. lift
-6. move_to("bag")
-7. release
+1. move_to(object)
+2. descend   (the fingers open by themselves to fit the object underneath)
+3. grasp
+4. lift
+5. move_to("bag")
+6. release
+
+set_gripper exists but is rarely needed: descend already opens the gripper to the right width.
 
 ## Default heuristics
 - Pack the object nearest to the gripper first, then the next nearest, and so on.
 - Only one object can be held at a time; after release, start the next object from step 1.
-- Always set_gripper for the object you are about to grasp (its width + 0.5), not for a previous target.
 - Never repeat a skill that just returned ok with identical parameters (e.g. set_gripper twice): move on to the next step.
 - If bag.openingLooksNarrow is true, widen_bag before releasing into the bag.
-- Emit stop ONLY when bag.contents lists all three objects (sponge, tape_holder, marker). If any object is still on_table or held, you are not done.
+- Emit stop ONLY when every object listed in the observation is in_bag (count them: the observation lists all of them). If any object is still on_table, rolled_out, cracked or held, you are not done.
 
 ## Reacting to the last outcome
 - ok: continue with the next step of the sequence.
@@ -60,7 +60,7 @@ Emit exactly one skill. Keep "reasoning" to one short sentence.`;
 
 export function buildPolicySystemPrompt(policy: PolicyVersion): string {
   const parts: string[] = [
-    `You are the high-level policy of a table-top packing robot. Each step you receive an observation and choose the single next skill for the frozen low-level controller to execute. Goal: get all three objects (sponge, tape holder, marker) into the bag and keep them there.`,
+    `You are the high-level policy of a table-top packing robot. Each step you receive an observation and choose the single next skill for the frozen low-level controller to execute. Goal: get every object listed in the observation (sponge, tape holder, marker, egg) into the bag and keep them there, intact.`,
     SKILL_LIBRARY,
     DEFAULTS,
   ];

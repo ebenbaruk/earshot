@@ -29,7 +29,7 @@ export const MAX_FEW_SHOTS = 6;
 
 const SYSTEM_PROMPT = `You are performing the post-training step of a hierarchical robot policy.
 
-A high-level policy (an LLM) picks one skill at a time for a frozen low-level controller that packs three objects (sponge, tape_holder, marker) into a bag. When the policy was about to do something wrong, a human operator shouted a correction; the correction was executed instead. Those corrections are your only supervision signal — your job is to compile them into durable rules so the next run needs fewer interventions.
+A high-level policy (an LLM) picks one skill at a time for a frozen low-level controller that packs four objects (sponge, tape_holder, marker, egg) into a bag. When the policy was about to do something wrong, a human operator shouted a correction; the correction was executed instead. Those corrections are your only supervision signal — your job is to compile them into durable rules so the next run needs fewer interventions.
 
 Write rules that are:
 - GENERAL: they must fire from the observation alone. Phrase conditions over things the policy can actually see — object ids, object states, gripper state (holding / opening / height), bag contents, bag.openingLooksNarrow, the last skill and its outcome, how many items are packed.
