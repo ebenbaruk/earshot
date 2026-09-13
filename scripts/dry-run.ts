@@ -35,7 +35,7 @@ for (const file of [".env.local", ".env"]) {
 }
 
 const VERBOSE = process.env.EARSHOT_DRY_VERBOSE === "1";
-const MAX_STEPS = 45;
+const MAX_STEPS = 60;
 
 interface Operator {
   enabled: boolean;
@@ -140,7 +140,14 @@ async function main() {
     console.log(`   ${a.status} stages=${a.record.stagesDone} interventions=${a.record.interventions} steps=${a.steps} llm=${Math.round(a.llmMs / Math.max(1, a.steps))}ms/step fallbacks=${a.fallbacks}`);
     console.log(`=== seed ${seed} — distill ===`);
     const t0 = Date.now();
-    const v1 = await distill({ policy: BASE_POLICY, corrections: a.corrections, runs: [a.record] });
+    let v1: PolicyVersion;
+    try {
+      v1 = await distill({ policy: BASE_POLICY, corrections: a.corrections, runs: [a.record] });
+    } catch (err) {
+      console.log(`   distill FAILED: ${(err as Error).message}`);
+      rows.push(`seed ${String(seed).padEnd(4)} | v0+operator: ${a.status} ${a.record.stagesDone}/3, ${a.record.interventions} corrections | distill failed`);
+      continue;
+    }
     console.log(`   v${v1.version} in ${Date.now() - t0} ms: ${v1.rules.length} rules`);
     for (const r of v1.rules) console.log(`   - WHEN ${r.when}\n     DO ${r.do}`);
     console.log(`=== seed ${seed} — run B: v1 alone ===`);

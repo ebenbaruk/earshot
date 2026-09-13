@@ -243,16 +243,27 @@ export async function distill(
   req: DistillRequest,
   opts: DistillOptions = {},
 ): Promise<PolicyVersion> {
-  const { data } = await chatJSON<DistillLLMOutput>({
-    model: opts.model ?? smartModel(),
-    system: SYSTEM_PROMPT,
-    user: buildDistillUserPrompt(req),
-    schema: DISTILL_SCHEMA,
-    schemaName: DISTILL_SCHEMA_NAME,
-    temperature: 0,
-    maxTokens: opts.maxTokens ?? 2000,
-    timeoutMs: opts.timeoutMs ?? 55_000,
-    apiKey: opts.apiKey,
-  });
-  return mergeDistillation(req, data, opts.now);
+  const call = (extra: string) =>
+    chatJSON<DistillLLMOutput>({
+      model: opts.model ?? smartModel(),
+      system: SYSTEM_PROMPT + extra,
+      user: buildDistillUserPrompt(req),
+      schema: DISTILL_SCHEMA,
+      schemaName: DISTILL_SCHEMA_NAME,
+      temperature: 0,
+      maxTokens: opts.maxTokens ?? 6000,
+      timeoutMs: opts.timeoutMs ?? 55_000,
+      apiKey: opts.apiKey,
+    });
+  let { data } = await call("");
+  let next = mergeDistillation(req, data, opts.now);
+  // A model occasionally answers with an empty rule list even though there
+  // are corrections to learn from. One firmer retry before giving up.
+  if (next.rules.length === req.policy.rules.length && req.corrections.some((c) => c.parsedCommand)) {
+    ({ data } = await call(
+      "\n\nIMPORTANT: the previous attempt returned no new rules. Every distinct correction below MUST yield at least one rule in `rules` (non-empty `when` and `do` strings).",
+    ));
+    next = mergeDistillation(req, data, opts.now);
+  }
+  return next;
 }

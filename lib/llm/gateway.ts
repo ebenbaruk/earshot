@@ -208,6 +208,11 @@ async function once<T>(
         ],
         max_tokens: args.maxTokens ?? 400,
         temperature: args.temperature ?? 0,
+        // Gemini 3.x models think by default; thinking tokens count against
+        // max_tokens and add latency. Keep it low for these small, structured tasks.
+        ...(llmProvider() === "gemini"
+          ? { reasoning_effort: process.env.EARSHOT_GEMINI_REASONING ?? "low" }
+          : {}),
         ...(mode === "response_format"
           ? {
               response_format: {
@@ -273,9 +278,15 @@ async function once<T>(
   }
 
   const envelope = parseJSONLoose<{
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
   }>(bodyText);
   const content = envelope.choices?.[0]?.message?.content;
+  if (envelope.choices?.[0]?.finish_reason === "length") {
+    throw new GatewayError("Gateway output truncated (max_tokens too low)", {
+      status: 502,
+      detail: (content ?? "").slice(0, 200),
+    });
+  }
   if (typeof content !== "string" || content.length === 0) {
     throw new GatewayError("Gateway response had no message content", {
       status: 502,
