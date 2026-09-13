@@ -12,7 +12,9 @@
  *           while paused → resume → the loop re-observes and continues.
  */
 import {
+  DEFAULT_GRIPPER_WIDTH,
   OBJECT_COUNT,
+  type ObjectId,
   type CorrectionEvent,
   ParseSource,
   PolicyDecision,
@@ -36,6 +38,8 @@ import { applyConstraints, emptyConstraints, learnFromCorrection, type RunConstr
 import { isDithering } from "./watchdog";
 import { parseCorrection } from "@/lib/corrections/parse";
 import { findStopWord, normalizeCorrection } from "@/lib/voice/stopwords";
+import type { OrderHint } from "@/lib/corrections/grammar";
+import { cancel as cancelSpeech, speak, subscribeSpeaking } from "@/lib/voice/tts";
 
 const CONTEXT_WINDOW_MS = 2000;
 const CONTEXT_KEEP_EVERY = 4; // 20 Hz ring buffer → 5 snapshots/s in the log
@@ -233,6 +237,85 @@ async function policyLoop(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// The robot talks back
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirror the TTS engine's speaking flag into the session so the HUD can show
+ * the indicator. Registered once, for the life of the tab.
+ */
+if (typeof window !== "undefined") {
+  subscribeSpeaking((speaking) => session().set({ speaking }));
+}
+
+/**
+ * Say one line, if the operator wants replies. Everything but the distillation
+ * line also requires an open mic: with the mic off there is no conversation to
+ * answer, only a UI.
+ */
+function say(line: string, opts: { requiresMic?: boolean } = {}): void {
+  if (!session().voiceReplies) return;
+  if (opts.requiresMic !== false && useVoiceStore.getState().status !== "listening") return;
+  speak(line);
+}
+
+const OBJECT_WORD: Record<ObjectId, string> = {
+  sponge: "sponge",
+  tape_holder: "tape",
+  marker: "marker",
+  egg: "egg",
+};
+
+/** Every line is ≤ 5 words: an acknowledgement, not a narration. */
+function acknowledgement(
+  command: SkillCommand | null,
+  orderHint: OrderHint | null,
+): string {
+  if (!command) return "Sorry, I didn't catch that.";
+  switch (command.skill) {
+    case "nudge": {
+      const horizontal = Math.abs(command.dx) >= Math.abs(command.dy);
+      const magnitude = horizontal ? Math.abs(command.dx) : Math.abs(command.dy);
+      const size = magnitude <= 2 ? "a bit" : "more";
+      const direction = horizontal
+        ? command.dx < 0
+          ? "to the left"
+          : "to the right"
+        : command.dy < 0
+          ? "towards you"
+          : "further away";
+      return `Okay, ${size} ${direction}.`;
+    }
+    case "squeeze":
+      return "Squeezing first.";
+    case "descend":
+      return "Lowering it.";
+    case "lift":
+      return "Lifting it.";
+    case "grasp":
+      return "Grabbing it.";
+    case "release":
+      return "Letting go.";
+    case "widen_bag":
+      return "Opening the bag.";
+    case "set_gripper":
+      return command.width >= DEFAULT_GRIPPER_WIDTH ? "Opening wider." : "Closing in.";
+    case "move_to": {
+      if (orderHint?.position === "last") {
+        const word = OBJECT_WORD[orderHint.object];
+        return `${word[0].toUpperCase()}${word.slice(1)} last, got it.`;
+      }
+      const target = command.target;
+      if (target === "bag") return "Heading to the bag.";
+      if (typeof target === "string") return `Doing the ${OBJECT_WORD[target]} first.`;
+      return "Moving there.";
+    }
+    default:
+      return "Got it.";
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Corrections
 // ---------------------------------------------------------------------------
 
@@ -255,6 +338,8 @@ function handleStop(partial: string): void {
   if (w.status === "running") engine().pause();
   else if (engine().isBusy()) void execute({ skill: "stop" }); // cancel a correction mid-animation
   flashStop(findStopWord(partial)?.word ?? "stop");
+  // One word, said the instant the arm halts: the operator hears the stop land.
+  say("Stopped.");
 }
 
 interface CorrectionInput {
@@ -334,11 +419,15 @@ async function applyCorrection(input: CorrectionInput): Promise<void> {
 
   // Logged but nothing executable: the HUD shows "didn't understand"; the sim
   // stays paused so the operator can say it again (or press Run).
-  if (!command) return;
+  if (!command) {
+    say(acknowledgement(null, null));
+    return;
+  }
 
   // "continue" → resume; "stop" → pause.
   if (command.skill === "wait" && (command.ms ?? 0) === 0) {
     runs.updateCorrection(id, { outcome: "ok" });
+    say("Continuing.");
     e.resume();
     return;
   }
@@ -353,6 +442,9 @@ async function applyCorrection(input: CorrectionInput): Promise<void> {
   loopEpoch++;
   if (running) e.pause();
   const outcome: SkillOutcome = await execute(command);
+  // Said after the skill lands, so "Okay, a bit to the left." confirms a move
+  // that actually happened.
+  say(outcome === "ok" ? acknowledgement(command, orderHint) : "That didn't work.");
   if (outcome === "ok") learnFromCorrection(constraints, command, obsAtUtterance, orderHint);
   runs.updateCorrection(id, { outcome });
   session().set({ lastCorrection: { ...event, outcome } });
@@ -455,7 +547,13 @@ export const controller = {
     try {
       const next = await requestDistill({ policy, corrections: pending, runs });
       policyStore.addVersion(next);
-      session().set({ selectedVersion: next.version });
+      // `lastDistilledAt` is the cue the Policy panel waits on: it switches the
+      // rail over and types the new rules in.
+      session().set({ selectedVersion: next.version, lastDistilledAt: Date.now() });
+      const learned = Math.max(1, next.rules.length - policy.rules.length);
+      // The one line that is said with the mic closed — it is the punchline of
+      // the demo, not an answer to something the operator just said.
+      say(`I learned ${learned} rule${learned === 1 ? "" : "s"}.`, { requiresMic: false });
     } catch (err) {
       session().set({ distillError: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -465,6 +563,16 @@ export const controller = {
 
   startVoice(): void {
     void useVoiceStore.getState().start(voiceEvents);
+  },
+
+  setVoiceReplies(enabled: boolean): void {
+    session().set({ voiceReplies: enabled });
+    if (!enabled) cancelSpeech();
+  },
+
+  /** Imperative on purpose: the HUD meter polls it from an animation frame. */
+  getLevel(): number {
+    return useVoiceStore.getState().level;
   },
 
   stopVoice(): void {

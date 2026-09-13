@@ -19,6 +19,15 @@ export interface SessionState {
   lastCorrection: CorrectionEvent | null;
   /** id of the run in progress, null between runs */
   activeRunId: string | null;
+  /** Spoken acknowledgements ("Robot voice" in the top-bar overflow menu). */
+  voiceReplies: boolean;
+  /** True while the robot's own voice is playing; mic input is muted meanwhile. */
+  speaking: boolean;
+  /**
+   * epoch ms when the newest policy version landed. The Policy panel uses it to
+   * tell a fresh distillation (type the rules in) from one being browsed.
+   */
+  lastDistilledAt: number | null;
   set: (patch: Partial<SessionState>) => void;
 }
 
@@ -33,5 +42,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   stopFlash: null,
   lastCorrection: null,
   activeRunId: null,
+  voiceReplies: true,
+  speaking: false,
+  lastDistilledAt: null,
   set: (patch) => set(patch),
 }));

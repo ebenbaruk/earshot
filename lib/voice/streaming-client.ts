@@ -104,6 +104,11 @@ export interface StreamingClientOptions {
    */
   onStopMetrics?: (metrics: StopMetrics) => void;
   onFinalMetrics?: (metrics: FinalMetrics) => void;
+  /**
+   * Mic loudness, 0..1, one call per outgoing 50 ms frame (20 Hz) and once on
+   * mute/stop. Drives the HUD level meter; deliberately not a transcript event.
+   */
+  onLevel?: (level: number) => void;
 }
 
 export interface StreamingClient {
@@ -116,12 +121,32 @@ export interface StreamingClient {
    * holds a mutable ref, so the integrator can bind sim callbacks after start().
    */
   setEvents(events: VoiceEvents): void;
+  /**
+   * Drop outgoing audio frames while true. Used while the robot's own voice is
+   * playing, so it is never transcribed as a correction.
+   */
+  setMuted(muted: boolean): void;
 }
 
 const MAX_RECONNECTS = 1;
 const RECONNECT_DELAY_MS = 200;
 /** Sent only if no audio has gone out recently; the docs' idle keep-alive. */
 const KEEPALIVE_INTERVAL_MS = 15000;
+
+/**
+ * RMS of one PCM16 frame, scaled so ordinary speech lands around 0.4–0.9 and
+ * room tone stays near 0. Display only — never fed back into the transcript.
+ */
+export function frameLevel(buffer: ArrayBuffer): number {
+  const pcm = new Int16Array(buffer);
+  if (pcm.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < pcm.length; i += 1) {
+    const v = pcm[i] / 32768;
+    sum += v * v;
+  }
+  return Math.min(1, Math.sqrt(sum / pcm.length) * 4.5);
+}
 
 export function createStreamingClient(
   events: VoiceEvents,
@@ -148,6 +173,7 @@ export function createStreamingClient(
   let sink: GainNode | null = null;
 
   let stopping = false;
+  let muted = false;
   let reconnects = 0;
   let lastAudioSentAt = 0;
   let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
@@ -278,6 +304,10 @@ export function createStreamingClient(
     worklet.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
       const buffer = event.data;
       if (!(buffer instanceof ArrayBuffer)) return;
+      // Muted: the robot is talking. Swallow the frame so its own voice is
+      // never transcribed, and flatten the meter.
+      if (muted) return;
+      if (opts.onLevel) opts.onLevel(frameLevel(buffer));
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(buffer);
         lastAudioSentAt = now();
@@ -430,6 +460,7 @@ export function createStreamingClient(
   async function start(): Promise<void> {
     if (status === "connecting" || status === "listening") return;
     stopping = false;
+    muted = false;
     reconnects = 0;
     turnState = initialTurnState();
     setStatus("connecting");
@@ -481,6 +512,8 @@ export function createStreamingClient(
     }
     closeMic();
     turnState = initialTurnState();
+    muted = false;
+    opts.onLevel?.(0);
     setStatus("off");
   }
 
@@ -491,6 +524,11 @@ export function createStreamingClient(
     status: () => status,
     setEvents: (next: VoiceEvents) => {
       sinks = next;
+    },
+    setMuted: (next: boolean) => {
+      if (muted === next) return;
+      muted = next;
+      if (next) opts.onLevel?.(0);
     },
   };
 }

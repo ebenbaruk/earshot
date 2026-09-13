@@ -24,7 +24,6 @@ const SKILL_LIBRARY = `## Skill library (the only actions that exist)
 - release            open the fingers and let go of what is held.
 - nudge(dx, dy)      small xy adjustment of the gripper, in cm.
 - squeeze            compress the held object.
-- widen_bag          re-open the mouth of the bag.
 - wait               do nothing for a moment.
 - stop               end the run.
 
@@ -44,17 +43,16 @@ set_gripper exists but is rarely needed: descend already opens the gripper to th
 - Pack the object nearest to the gripper first, then the next nearest, and so on.
 - Only one object can be held at a time; after release, start the next object from step 1.
 - Never repeat a skill that just returned ok with identical parameters (e.g. set_gripper twice): move on to the next step.
-- If bag.openingLooksNarrow is true, widen_bag before releasing into the bag.
 - Emit stop ONLY when every object listed in the observation is in_bag (count them: the observation lists all of them). If any object is still on_table, rolled_out, cracked or held, you are not done.
 
 ## Reacting to the last outcome
 - ok: continue with the next step of the sequence.
 - slipped or missed: retry the same approach at most ONCE; if it fails again, lift and re-approach, or move on to a different object. Never set the gripper narrower than the object width + 0.5 — a narrower gripper always slips.
-- blocked on release: the bag mouth is too small — widen_bag, then release again.
+- blocked on release: the item does not fit into the bag as it is. Repeating the same release will block again; change something about the item or the approach before trying again.
 - rolled_out: an item left the bag; re-plan rather than repeating what you just did.
 - cracked: the item broke on release and a fresh one was put back on the table; do not repeat the exact same release.
 - interrupted: the operator stopped you; follow whatever they asked.
-- A nudge, set_gripper, squeeze or widen_bag in the recent history that you did not plan was the human operator correcting you. Keep its effect: continue from the gripper's CURRENT position and width (descend / grasp next) and never move back to the estimated centre to undo it.
+- A nudge, set_gripper, squeeze or descend in the recent history that you did not plan was the human operator correcting you. Keep its effect: continue from the gripper's CURRENT position and width (descend / grasp next) and never move back to the estimated centre to undo it.
 
 Emit exactly one skill. Keep "reasoning" to one short sentence.`;
 
@@ -123,11 +121,15 @@ export function buildPolicyUserPrompt(obs: Observation): string {
   lines.push(
     `Bag: at (${r05(obs.bag.pos.x)}, ${r05(obs.bag.pos.y)}), distance from gripper = ${r05(
       bagDist,
-    )}, contents = [${obs.bag.contents.join(", ")}], openingLooksNarrow = ${
-      obs.bag.openingLooksNarrow
-    }`,
+    )}, contents = [${obs.bag.contents.join(", ")}]`,
   );
-  lines.push(`Packed and still in the bag: ${obs.stagesDone}/3`);
+  const remaining = obs.objects.filter((o) => o.state !== "in_bag").map((o) => o.id);
+  lines.push(`Packed and still in the bag: ${obs.stagesDone}/${obs.objects.length}`);
+  lines.push(
+    remaining.length > 0
+      ? `Still to pack: ${remaining.join(", ")} — the run is NOT finished.`
+      : "Every object is in the bag: the run is finished, emit stop.",
+  );
 
   lines.push(
     `Last skill: ${obs.lastSkill ? describeOutcomeEntry(obs.lastSkill) : "none (start of run)"}`,
