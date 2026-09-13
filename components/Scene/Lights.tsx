@@ -1,50 +1,98 @@
 "use client";
 
-import { useRef } from "react";
-import { useFrame } from "@react-three/fiber";
-import type { PointLight } from "three";
+import { useEffect, useRef } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { PMREMGenerator } from "three";
+import type { PointLight, SpotLight } from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { useSimStore } from "@/store/useSimStore";
 import { approach, damp } from "./coords";
 
-/** Studio key/fill plus a red rim light that fades in while the run is paused. */
+/**
+ * Image-based lighting from three's bundled RoomEnvironment.
+ * Deliberately NOT drei's <Environment preset>, which downloads an HDR — the
+ * demo has to look identical with the network unplugged.
+ */
+function StudioEnvironment() {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+
+  useEffect(() => {
+    const pmrem = new PMREMGenerator(gl);
+    const room = new RoomEnvironment();
+    const rt = pmrem.fromScene(room, 0.04);
+    /* eslint-disable react-hooks/immutability -- three.js Scene is a mutable object by design */
+    scene.environment = rt.texture;
+    scene.environmentIntensity = 0.7;
+    return () => {
+      scene.environment = null;
+      rt.dispose();
+      room.dispose();
+      pmrem.dispose();
+    };
+    /* eslint-enable react-hooks/immutability */
+  }, [gl, scene]);
+
+  return null;
+}
+
+/** Soft key + fill studio rig, a warm pool over the table, and a pause rim light. */
 export function Lights() {
   const rim = useRef<PointLight>(null);
+  const pool = useRef<SpotLight>(null);
 
   useFrame((_, dt) => {
-    if (!rim.current) return;
     const paused = useSimStore.getState().world.status === "paused";
-    rim.current.intensity = approach(rim.current.intensity, paused ? 900 : 0, damp(dt, 6));
+    if (rim.current) {
+      rim.current.intensity = approach(rim.current.intensity, paused ? 700 : 0, damp(dt, 6));
+    }
+    if (pool.current) {
+      pool.current.intensity = approach(pool.current.intensity, paused ? 1100 : 1900, damp(dt, 5));
+    }
   });
 
   return (
     <>
-      <ambientLight intensity={0.45} color="#c9d6ff" />
-      <hemisphereLight args={["#8fa6ff", "#141821", 0.5]} />
+      <StudioEnvironment />
+      <ambientLight intensity={0.34} color="#bcd0ff" />
+      <hemisphereLight args={["#93aaff", "#0b0e15", 0.6]} />
+
+      {/* key */}
       <directionalLight
-        position={[24, 46, 26]}
-        intensity={2.1}
-        color="#fff4e2"
+        position={[26, 48, 30]}
+        intensity={2.5}
+        color="#fff1dc"
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-bias={-0.0008}
+        shadow-bias={-0.0006}
+        shadow-normalBias={0.06}
         shadow-camera-near={1}
-        shadow-camera-far={140}
-        shadow-camera-left={-45}
-        shadow-camera-right={45}
-        shadow-camera-top={45}
-        shadow-camera-bottom={-45}
+        shadow-camera-far={160}
+        shadow-camera-left={-50}
+        shadow-camera-right={50}
+        shadow-camera-top={50}
+        shadow-camera-bottom={-50}
       />
+      {/* cool fill from the opposite side — shapes the metal without a second shadow */}
+      <directionalLight position={[-40, 26, -18]} intensity={0.8} color="#8fb4ff" />
+      {/* low back light, separates the gantry from the black background */}
+      <directionalLight position={[-6, 12, -46]} intensity={1.0} color="#6f8cff" />
+
+      {/* warm pool centred on the work area */}
       <spotLight
-        position={[-34, 40, 34]}
-        angle={0.7}
-        penumbra={1}
-        intensity={900}
-        color="#9fc4ff"
-        distance={140}
+        ref={pool}
+        position={[-6, 58, 20]}
+        angle={0.62}
+        penumbra={0.95}
+        intensity={1900}
+        distance={150}
+        decay={1.6}
+        color="#ffdcb0"
       />
+
       {/* pause rim light */}
-      <pointLight ref={rim} position={[0, 14, 34]} intensity={0} color="#ff3b30" distance={130} />
+      <pointLight ref={rim} position={[0, 16, 36]} intensity={0} color="#ff3b30" distance={140} />
     </>
   );
 }

@@ -1,89 +1,115 @@
 "use client";
 
-import { useRef } from "react";
-import { useFrame } from "@react-three/fiber";
-import { Html } from "@react-three/drei";
-import type { Group } from "three";
+import { Html, RoundedBox } from "@react-three/drei";
+import { DoubleSide } from "three";
+import { BAG_POS } from "@/lib/sim/constants";
 import {
-  BAG_DEPTH,
+  BAG_FLOOR,
   BAG_HEIGHT,
-  BAG_OPENING_MAX,
-  BAG_POS,
-} from "@/lib/sim/constants";
-import { useSimStore } from "@/store/useSimStore";
-import { approach, damp } from "./coords";
+  BAG_INNER_D,
+  BAG_INNER_W,
+  BAG_OUTER_D,
+  BAG_OUTER_W,
+  BAG_WALL,
+} from "./layout3d";
 
-const BODY_NOMINAL = BAG_OPENING_MAX + 3;
+const RIM_T = 0.34;
 
-/** Open ziploc bag: a transparent pouch whose mouth width tracks `bag.opening`. */
+interface WallProps {
+  position: [number, number, number];
+  args: [number, number, number];
+}
+
+/** One frosted polyethylene panel. */
+function Wall({ position, args }: WallProps) {
+  return (
+    <RoundedBox position={position} args={args} radius={0.22} smoothness={2} castShadow>
+      <meshPhysicalMaterial
+        color="#dff1ff"
+        transparent
+        opacity={0.17}
+        roughness={0.42}
+        metalness={0}
+        clearcoat={0.7}
+        clearcoatRoughness={0.35}
+        transmission={0.25}
+        thickness={0.6}
+        ior={1.45}
+        side={DoubleSide}
+        depthWrite={false}
+        envMapIntensity={0.9}
+      />
+    </RoundedBox>
+  );
+}
+
+/**
+ * The packing pouch: a translucent, slightly frosted PE box with soft edges,
+ * an open top and a thin bright rim. The opening is a constant 12 cm, so there
+ * is nothing to animate here — the bag is set dressing that items must clear.
+ */
 export function Bag() {
-  const body = useRef<Group>(null);
-  const rim = useRef<Group>(null);
-  const opening = useSimStore((s) => Math.round(s.world.bag.opening * 10) / 10);
-
-  useFrame((_, dt) => {
-    const w = useSimStore.getState().world;
-    const k = damp(dt, 10);
-    if (body.current) {
-      body.current.scale.x = approach(body.current.scale.x, (w.bag.opening + 3) / BODY_NOMINAL, k);
-    }
-    if (rim.current) {
-      rim.current.scale.x = approach(
-        rim.current.scale.x,
-        Math.max(0.08, w.bag.opening / BAG_OPENING_MAX),
-        k,
-      );
-    }
-  });
+  const halfW = BAG_INNER_W / 2 + BAG_WALL / 2;
+  const halfD = BAG_INNER_D / 2 + BAG_WALL / 2;
+  const wallH = BAG_HEIGHT;
 
   return (
     <group position={[BAG_POS.x, 0, -BAG_POS.y]}>
-      {/* pouch */}
-      <group ref={body}>
-        <mesh position={[0, BAG_HEIGHT / 2, 0]}>
-          <boxGeometry args={[BODY_NOMINAL, BAG_HEIGHT, BAG_DEPTH]} />
-          <meshPhysicalMaterial
-            color="#bfe9ff"
-            transparent
-            opacity={0.1}
-            roughness={0.12}
-            metalness={0}
-            transmission={0}
-            depthWrite={false}
-            side={2}
-          />
-        </mesh>
-        {/* bottom seam */}
-        <mesh position={[0, 0.25, 0]}>
-          <boxGeometry args={[BODY_NOMINAL, 0.5, BAG_DEPTH]} />
-          <meshStandardMaterial color="#7fd7ff" transparent opacity={0.35} roughness={0.3} />
-        </mesh>
+      {/* floor */}
+      <mesh position={[0, BAG_FLOOR / 2, 0]} receiveShadow>
+        <boxGeometry args={[BAG_OUTER_W, BAG_FLOOR, BAG_OUTER_D]} />
+        <meshPhysicalMaterial
+          color="#cfe6f5"
+          transparent
+          opacity={0.38}
+          roughness={0.55}
+          metalness={0}
+          clearcoat={0.4}
+        />
+      </mesh>
+
+      {/* four walls */}
+      <Wall position={[-halfW, wallH / 2, 0]} args={[BAG_WALL, wallH, BAG_OUTER_D]} />
+      <Wall position={[halfW, wallH / 2, 0]} args={[BAG_WALL, wallH, BAG_OUTER_D]} />
+      <Wall position={[0, wallH / 2, -halfD]} args={[BAG_INNER_W, wallH, BAG_WALL]} />
+      <Wall position={[0, wallH / 2, halfD]} args={[BAG_INNER_W, wallH, BAG_WALL]} />
+
+      {/* the open rim: a thin brighter line all the way round */}
+      <group position={[0, wallH, 0]}>
+        {([
+          [-halfW, 0, 0, RIM_T, RIM_T, BAG_OUTER_D + RIM_T],
+          [halfW, 0, 0, RIM_T, RIM_T, BAG_OUTER_D + RIM_T],
+          [0, 0, -halfD, BAG_OUTER_W + RIM_T, RIM_T, RIM_T],
+          [0, 0, halfD, BAG_OUTER_W + RIM_T, RIM_T, RIM_T],
+        ] as const).map(([x, y, z, w, h, d]) => (
+          <mesh key={`${x}:${z}`} position={[x, y, z]}>
+            <boxGeometry args={[w, h, d]} />
+            <meshStandardMaterial
+              color="#bfe9ff"
+              emissive="#4ec2f0"
+              emissiveIntensity={0.85}
+              roughness={0.3}
+              metalness={0.1}
+              toneMapped={false}
+            />
+          </mesh>
+        ))}
       </group>
 
-      {/* the mouth: a bright rectangle whose width IS bag.opening */}
-      <group ref={rim} position={[0, BAG_HEIGHT, 0]}>
-        <mesh position={[-BAG_OPENING_MAX / 2, 0, 0]}>
-          <boxGeometry args={[0.55, 0.55, BAG_DEPTH + 0.55]} />
-          <meshStandardMaterial color="#43d9ff" emissive="#1b7fa8" emissiveIntensity={0.8} />
-        </mesh>
-        <mesh position={[BAG_OPENING_MAX / 2, 0, 0]}>
-          <boxGeometry args={[0.55, 0.55, BAG_DEPTH + 0.55]} />
-          <meshStandardMaterial color="#43d9ff" emissive="#1b7fa8" emissiveIntensity={0.8} />
-        </mesh>
-        <mesh position={[0, 0, BAG_DEPTH / 2]}>
-          <boxGeometry args={[BAG_OPENING_MAX, 0.55, 0.55]} />
-          <meshStandardMaterial color="#43d9ff" emissive="#1b7fa8" emissiveIntensity={0.8} />
-        </mesh>
-        <mesh position={[0, 0, -BAG_DEPTH / 2]}>
-          <boxGeometry args={[BAG_OPENING_MAX, 0.55, 0.55]} />
-          <meshStandardMaterial color="#43d9ff" emissive="#1b7fa8" emissiveIntensity={0.8} />
-        </mesh>
-      </group>
+      {/* a faint seam near the base, so the pouch reads as a folded sheet */}
+      <mesh position={[0, BAG_FLOOR + 0.9, 0]}>
+        <boxGeometry args={[BAG_OUTER_W + 0.06, 0.12, BAG_OUTER_D + 0.06]} />
+        <meshStandardMaterial color="#9fd9f5" transparent opacity={0.3} roughness={0.4} />
+      </mesh>
 
-      <Html position={[0, BAG_HEIGHT + 4.5, 0]} center distanceFactor={55} zIndexRange={[10, 0]}>
-        <div className="scene-label">
-          Bag <span className="scene-label-dim">opening {opening} cm</span>
-        </div>
+      {/* label parked off to the front-left so the stacked item badges stay clear */}
+      <Html
+        position={[-(BAG_OUTER_W / 2 + 4.5), 2.2, BAG_OUTER_D / 2 + 2]}
+        center
+        distanceFactor={62}
+        zIndexRange={[8, 0]}
+      >
+        <div className="scene-label">Bag</div>
       </Html>
     </group>
   );
