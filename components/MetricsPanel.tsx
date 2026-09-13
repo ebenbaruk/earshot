@@ -16,6 +16,11 @@ import {
 import type { CorrectionEvent, RunRecord } from "@/lib/types";
 import { EmptyState } from "./primitives";
 
+/** A run counts as supervised only if a human actually intervened. */
+function isSupervised(r: RunRecord): boolean {
+  return r.correctionsEnabled && r.interventions > 0;
+}
+
 /**
  * Series colours. Two categorical hues, validated against the panel surface
  * (#110f0e) for the OKLCH lightness band, chroma floor, CVD separation
@@ -131,8 +136,8 @@ export function MetricsPanel({
         run: i + 1,
         id: r.id,
         policyVersion: r.policyVersion,
-        supervised: r.correctionsEnabled ? r.stagesDone : null,
-        autonomous: r.correctionsEnabled ? null : r.stagesDone,
+        supervised: isSupervised(r) ? r.stagesDone : null,
+        autonomous: isSupervised(r) ? null : r.stagesDone,
         interventions: r.interventions,
       })),
     [runs],
@@ -148,8 +153,8 @@ export function MetricsPanel({
   );
 
   const summary = useMemo(() => {
-    const supervised = runs.filter((r) => r.correctionsEnabled);
-    const autonomous = runs.filter((r) => !r.correctionsEnabled);
+    const supervised = runs.filter(isSupervised);
+    const autonomous = runs.filter((r) => !isSupervised(r));
     const interventions = supervised.map((r) => r.interventions);
 
     const first = autonomous[0];

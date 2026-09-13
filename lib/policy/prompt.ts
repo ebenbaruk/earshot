@@ -43,7 +43,7 @@ const DEFAULTS = `## How to pack an object (canonical sequence)
 - Pack the object nearest to the gripper first, then the next nearest, and so on.
 - Only one object can be held at a time; after release, start the next object from step 1.
 - If bag.openingLooksNarrow is true, widen_bag before releasing into the bag.
-- When all three objects are in the bag, emit stop.
+- Emit stop ONLY when bag.contents lists all three objects (sponge, tape_holder, marker). If any object is still on_table or held, you are not done.
 
 ## Reacting to the last outcome
 - ok: continue with the next step of the sequence.

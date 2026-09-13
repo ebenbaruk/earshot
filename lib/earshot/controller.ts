@@ -178,17 +178,25 @@ async function policyLoop(): Promise<void> {
       const epoch = loopEpoch;
       const policy = usePolicyStore.getState().current();
       session().set({ policyThinking: true });
-      const decision = await decideWithBackoff(policy);
+      let decision = await decideWithBackoff(policy);
       session().set({ policyThinking: false });
 
       // The world moved on (stop, correction, reset) while we were thinking.
       if (epoch !== loopEpoch || engine().world.status !== "running") continue;
 
-      session().set({ decision });
       if (decision.command.skill === "stop") {
-        engine().pause();
-        continue;
+        if (engine().world.stagesDone >= 3) {
+          session().set({ decision });
+          engine().pause();
+          continue;
+        }
+        // The policy tried to end the run with objects still on the table
+        // (a hallucinated "all packed"). Override with the deterministic
+        // planner for this one step so the run keeps moving.
+        const fb = fallbackDecision(engine().getObservation());
+        decision = { command: fb.command, reasoning: `[override: policy stopped early] ${fb.reasoning.replace(/^\[fallback\] /, "")}` };
       }
+      session().set({ decision });
       inFlightDecision = decision;
       await execute(decision.command);
       inFlightDecision = null;
