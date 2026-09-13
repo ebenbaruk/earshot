@@ -16,7 +16,10 @@ export function useEarshot(): { vm: EarshotViewModel; actions: EarshotActions } 
   useEffect(() => {
     // Runs left unfinished by a reload are noise: drop them once hydrated.
     void Promise.resolve(useRunsStore.persist.rehydrate()).then(() => {
-      useRunsStore.setState((s) => ({ runs: s.runs.filter((r) => r.endedAt !== null) }));
+      const active = useSessionStore.getState().activeRunId;
+      useRunsStore.setState((s) => ({
+        runs: s.runs.filter((r) => r.endedAt !== null || r.id === active),
+      }));
     });
   }, []);
 

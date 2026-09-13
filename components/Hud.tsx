@@ -128,8 +128,10 @@ function Transcript({ vm }: { vm: EarshotViewModel }) {
     last.parsedCommand != null &&
     sinceCorrection >= 0 &&
     sinceCorrection < 4000;
+  const showUnparsed =
+    last != null && last.parsedCommand == null && sinceCorrection >= 0 && sinceCorrection < 6000;
 
-  const hasSomething = vm.partial.length > 0 || stopped || showNudge;
+  const hasSomething = vm.partial.length > 0 || stopped || showNudge || showUnparsed;
 
   return (
     <div className="pointer-events-auto flex w-full max-w-[46rem] flex-col items-center gap-2">
@@ -180,6 +182,17 @@ function Transcript({ vm }: { vm: EarshotViewModel }) {
           </Chip>
           <span className="text-[11.5px] text-faint">
             from “{last.transcript}” · {last.parseSource}
+          </span>
+        </div>
+      ) : null}
+
+      {showUnparsed && last ? (
+        <div className="rise flex flex-wrap items-center justify-center gap-2">
+          <Chip tone="danger" mono>
+            ? didn’t understand
+          </Chip>
+          <span className="text-[11.5px] text-faint">
+            “{last.transcript}” — say it again, or press Run to continue
           </span>
         </div>
       ) : null}

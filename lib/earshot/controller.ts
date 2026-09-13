@@ -31,7 +31,7 @@ import { requestDecisionWithMeta, requestDistill } from "@/lib/policy/client";
 import { fallbackDecision } from "@/lib/policy/fallback";
 import { parseCorrectionFast } from "@/lib/corrections/grammar";
 import { parseCorrection } from "@/lib/corrections/parse";
-import { findStopWord } from "@/lib/voice/stopwords";
+import { findStopWord, normalizeCorrection } from "@/lib/voice/stopwords";
 
 const CONTEXT_WINDOW_MS = 2000;
 const CONTEXT_KEEP_EVERY = 4; // 20 Hz ring buffer → 5 snapshots/s in the log
@@ -42,10 +42,13 @@ let loopRunning = false;
 let stopFlashTimer: ReturnType<typeof setTimeout> | null = null;
 let frozenContext: WorldState[] | null = null;
 let lastStopT: number | null = null; // world.t when the last stop landed; consumed by the next correction
+let inFlightDecision: PolicyDecision | null = null; // the skill the policy is executing right now
 let correctionQueue: Promise<void> = Promise.resolve();
 
 const session = () => useSessionStore.getState();
 const engine = () => getSimEngine();
+/** Always execute through the store so the 20 Hz ticker is guaranteed to exist. */
+const execute = (cmd: SkillCommand) => useSimStore.getState().execute(cmd);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,10 +56,6 @@ const engine = () => getSimEngine();
 
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
-}
-
-async function waitUntil(pred: () => boolean, pollMs = 40): Promise<void> {
-  while (!pred()) await sleep(pollMs);
 }
 
 function isTerminal(status: WorldState["status"]) {
@@ -72,8 +71,16 @@ function sampleContext(states: WorldState[]): WorldState[] {
 
 function nextId(prefix: "c" | "run"): string {
   const { corrections, runs } = useRunsStore.getState();
-  const n = prefix === "c" ? corrections.length + 1 : runs.length + 1;
-  return `${prefix === "c" ? "c" : "run-"}${n}`;
+  const re = prefix === "c" ? /^c(\d+)$/ : /^run-(\d+)$/;
+  const ids =
+    prefix === "c"
+      ? corrections.map((c) => c.id)
+      : [...runs.map((r) => r.id), ...corrections.map((c) => c.runId)];
+  const max = ids.reduce((m, id) => {
+    const x = re.exec(id);
+    return x ? Math.max(m, Number(x[1])) : m;
+  }, 0);
+  return `${prefix === "c" ? "c" : "run-"}${max + 1}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,8 +165,9 @@ async function policyLoop(): Promise<void> {
     for (;;) {
       const w = engine().world;
       if (isTerminal(w.status)) break;
+      if (w.status === "idle") break; // reset() dropped us back to idle: this loop is over
       if (w.status !== "running") {
-        await waitUntil(() => engine().world.status !== "paused");
+        await sleep(40); // paused: yield a macrotask, never spin on microtasks
         continue;
       }
       if (engine().isBusy()) {
@@ -181,10 +189,13 @@ async function policyLoop(): Promise<void> {
         engine().pause();
         continue;
       }
-      await engine().execute(decision.command);
+      inFlightDecision = decision;
+      await execute(decision.command);
+      inFlightDecision = null;
     }
   } finally {
     loopRunning = false;
+    inFlightDecision = null;
     if (isTerminal(engine().world.status)) finishRun();
   }
 }
@@ -209,7 +220,8 @@ function handleStop(partial: string): void {
   frozenContext = sampleContext(engine().getRecentStates(CONTEXT_WINDOW_MS));
   lastStopT = w.t;
   loopEpoch++;
-  engine().pause();
+  if (w.status === "running") engine().pause();
+  else if (engine().isBusy()) void execute({ skill: "stop" }); // cancel a correction mid-animation
   flashStop(findStopWord(partial)?.word ?? "stop");
 }
 
@@ -232,12 +244,8 @@ async function applyCorrection(input: CorrectionInput): Promise<void> {
   // "stop" alone: stay paused and wait for the actual correction.
   if (!text) return;
 
-  const wasRunning = w.status === "running";
-  // A correction that lands while the sim is paused by a stop (this turn or a
-  // previous one) is a stop-correction; one that lands while running is preventive.
-  const tStop = wasRunning ? null : (lastStopT ?? w.t);
-  lastStopT = null;
-  const rejected = s.decision;
+  const epochAtUtterance = loopEpoch;
+  const rejected = inFlightDecision; // null = the policy was between skills (honestly unknown)
   const stateBefore = frozenContext ?? sampleContext(e.getRecentStates(CONTEXT_WINDOW_MS));
   frozenContext = null;
 
@@ -252,11 +260,22 @@ async function applyCorrection(input: CorrectionInput): Promise<void> {
   }
   const parseMs = performance.now() - t0;
 
+  // Re-read the world: a stop, a run or a reset may have landed while parsing.
+  const now = e.world;
+  if (isTerminal(now.status) || now.status === "idle") return;
+  const stoppedWhileParsing = loopEpoch !== epochAtUtterance;
+  const running = now.status === "running";
+  // A correction that lands while the sim is paused by a stop (this turn or a
+  // previous one) is a stop-correction; one that lands while running is preventive.
+  const tStop = running ? null : (lastStopT ?? now.t);
+  lastStopT = null;
+  const activeRunId = session().activeRunId;
+
   const id = nextId("c");
   const event: CorrectionEvent = {
     id,
-    runId: s.activeRunId ?? "run-0",
-    ts: w.t,
+    runId: activeRunId ?? "run-0",
+    ts: now.t,
     tStop,
     transcript: input.raw || text,
     parsedCommand: command,
@@ -265,20 +284,22 @@ async function applyCorrection(input: CorrectionInput): Promise<void> {
     stateBefore,
     outcome: null,
     latency: { stopMs: tStop !== null ? useVoiceStore.getState().lastStopLatencyMs : null, parseMs },
-    preventive: wasRunning,
+    preventive: running,
   };
   const runs = useRunsStore.getState();
   runs.addCorrection(event);
-  if (s.activeRunId) {
-    const run = runs.runs.find((r) => r.id === s.activeRunId);
-    runs.updateRun(s.activeRunId, {
+  if (activeRunId) {
+    const run = runs.runs.find((r) => r.id === activeRunId);
+    runs.updateRun(activeRunId, {
       interventions: (run?.interventions ?? 0) + 1,
       correctionIds: [...(run?.correctionIds ?? []), id],
     });
   }
   session().set({ lastCorrection: event });
 
-  if (!command) return; // logged, but nothing executable — stays paused if it was
+  // Logged but nothing executable: the HUD shows "didn't understand"; the sim
+  // stays paused so the operator can say it again (or press Run).
+  if (!command) return;
 
   // "continue" → resume; "stop" → pause.
   if (command.skill === "wait" && (command.ms ?? 0) === 0) {
@@ -295,11 +316,12 @@ async function applyCorrection(input: CorrectionInput): Promise<void> {
 
   // Preventive correction while running: interrupt the current skill first.
   loopEpoch++;
-  if (wasRunning) e.pause();
-  const outcome: SkillOutcome = await e.execute(command);
+  if (running) e.pause();
+  const outcome: SkillOutcome = await execute(command);
   runs.updateCorrection(id, { outcome });
   session().set({ lastCorrection: { ...event, outcome } });
-  if (!isTerminal(e.world.status)) e.resume();
+  // Never resume over a stop that landed while we were parsing.
+  if (!stoppedWhileParsing && !isTerminal(e.world.status)) e.resume();
 }
 
 function enqueueCorrection(input: CorrectionInput) {
@@ -322,6 +344,9 @@ export const controller = {
     const w = e.world;
     if (isTerminal(w.status)) {
       e.reset(session().seed);
+      lastStopT = null;
+      frozenContext = null;
+      session().set({ decision: null, stopFlash: null, lastCorrection: null });
     }
     if (e.world.status === "idle") {
       beginRun();
@@ -382,7 +407,9 @@ export const controller = {
     const pending = controller.pendingCorrections();
     if (pending.length === 0) return;
     const policyStore = usePolicyStore.getState();
-    const policy = policyStore.current();
+    // Always extend the newest version, even if an older one is active (ablation).
+    const newest = Math.max(...policyStore.versions.map((v) => v.version));
+    const policy = policyStore.versions.find((v) => v.version === newest) ?? policyStore.current();
     const runIds = new Set(pending.map((c) => c.runId));
     const runs = useRunsStore.getState().runs.filter((r) => runIds.has(r.id));
     s.set({ distilling: true, distillError: null });
@@ -410,8 +437,8 @@ export const controller = {
     if (!trimmed) return;
     const stop = findStopWord(trimmed);
     if (stop && engine().world.status === "running") handleStop(trimmed);
-    // Strip the stop word so "stop, a bit left" parses like the spoken path.
-    const rest = stop ? trimmed.replace(new RegExp(stop.word, "i"), "").replace(/^[\s,.]+/, "") : trimmed;
+    // Same stripping as the spoken path ("stop, uh, a bit left" → "a bit left").
+    const rest = normalizeCorrection(trimmed);
     enqueueCorrection({ text: rest, raw: trimmed, hadStop: Boolean(stop), source: "text" });
   },
 

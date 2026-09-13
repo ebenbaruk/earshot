@@ -47,6 +47,9 @@ function ensureTicker(): void {
   let last = performance.now();
   ticker = setInterval(() => {
     const now = performance.now();
+    // A hidden tab accumulates a backlog: drop it instead of replaying a minute
+    // of skills in a burst when the operator switches back.
+    if (now - last > MAX_CATCHUP_STEPS * TICK_MS) last = now - TICK_MS;
     let due = Math.min(MAX_CATCHUP_STEPS, Math.floor((now - last) / TICK_MS));
     if (due <= 0) return;
     last += due * TICK_MS;
