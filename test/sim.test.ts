@@ -28,11 +28,13 @@ async function flush(): Promise<void> {
 }
 
 /** move_to -> descend -> (set_gripper) -> grasp -> lift -> move_to bag -> release */
-async function pack(engine: Engine, id: ObjectId, width?: number) {
+async function pack(engine: Engine, id: ObjectId, width?: number, opts: { raw?: boolean } = {}) {
   const cmds: SkillCommand[] = [{ skill: "move_to", target: id }, { skill: "descend" }];
   if (width !== undefined) cmds.push({ skill: "set_gripper", width });
   if (id === "tape_holder") cmds.push({ skill: "nudge", dx: TAPE_GRASP_OFFSET.x, dy: TAPE_GRASP_OFFSET.y });
   cmds.push({ skill: "grasp" }, { skill: "lift" }, { skill: "move_to", target: "bag" });
+  // The sponge never fits uncompressed; squeeze it unless the test opts out.
+  if (id === "sponge" && !opts.raw) cmds.push({ skill: "squeeze" });
   await runSequence(engine, cmds);
   return runSkill(engine, { skill: "release" });
 }
@@ -204,7 +206,7 @@ describe("quirk 3 — the marker rolls out", () => {
   it("stays in the bag when it is packed last", async () => {
     const e = createEngine(SEED);
     e.start();
-    await pack(e, "sponge"); // opening is still 12, so it goes in uncompressed
+    await pack(e, "sponge");
     expect(obj(e.world, "sponge").state).toBe("in_bag");
     await pack(e, "tape_holder", 7.5);
     const last = await pack(e, "marker");

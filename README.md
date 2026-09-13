@@ -31,6 +31,8 @@ pnpm dev
 
 Open http://localhost:3000, allow the microphone, press **Run**, and talk.
 
+The policy and the distillation go through the AssemblyAI **LLM Gateway**; your account needs access to the Claude models listed on the [models page](https://www.assemblyai.com/docs/llm-gateway/available-models) (hackathon credits enable them). Without it, the policy loop degrades to a deterministic local planner (badged `[fallback]` in the HUD) and `Distill` reports the Gateway error. `EARSHOT_FAST_MODEL` / `EARSHOT_SMART_MODEL` override the model ids.
+
 Scripts: `pnpm test` (vitest), `pnpm typecheck`, `pnpm dry-run` (headless run of the full loop without a browser).
 
 ## Repo map

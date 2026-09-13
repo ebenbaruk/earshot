@@ -89,7 +89,13 @@ export function fallbackDecision(obs: Observation): PolicyDecision {
 
   const target = targets[0];
   const wantedWidth = clampGripperWidth(target.size.w + 0.5);
-  const overTarget = dist(g.pos, target.estimatedPos) <= XY_TOLERANCE;
+  // A recent `nudge` is the human operator repositioning us: trust it and do
+  // not move back to the estimated centre.
+  const nudgedHere =
+    obs.lastSkill?.command.skill === "nudge" &&
+    obs.lastSkill.outcome === "ok" &&
+    dist(g.pos, target.estimatedPos) <= 5;
+  const overTarget = nudgedHere || dist(g.pos, target.estimatedPos) <= XY_TOLERANCE;
 
   // Gripper must be open enough before we come down on the object.
   if (!overTarget || g.z > Z_TOUCHING) {

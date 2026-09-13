@@ -22,10 +22,17 @@ const LABEL_CSS = `
 
 function CameraRig() {
   const camera = useThree((s) => s.camera);
+  const size = useThree((s) => s.size);
   useLayoutEffect(() => {
+    // Widen the field of view on squarer viewports so the whole table stays in frame.
+    const aspect = size.width / Math.max(1, size.height);
+    const fov = aspect >= 1.7 ? 30 : aspect >= 1.3 ? 34 : aspect >= 1.0 ? 38 : 48;
+    if ("fov" in camera) {
+      (camera as { fov: number }).fov = fov;
+    }
     camera.lookAt(...LOOK_AT);
     camera.updateProjectionMatrix();
-  }, [camera]);
+  }, [camera, size.width, size.height]);
   return null;
 }
 

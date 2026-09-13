@@ -51,6 +51,7 @@ const DEFAULTS = `## How to pack an object (canonical sequence)
 - blocked on release: the bag mouth is too small — widen_bag, then release again.
 - rolled_out: an item left the bag; re-plan rather than repeating what you just did.
 - interrupted: the operator stopped you; follow whatever they asked.
+- A nudge, set_gripper, squeeze or widen_bag in the recent history that you did not plan was the human operator correcting you. Keep its effect: continue from the gripper's CURRENT position and width (descend / grasp next) and never move back to the estimated centre to undo it.
 
 Emit exactly one skill. Keep "reasoning" to one short sentence.`;
 

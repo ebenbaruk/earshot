@@ -36,12 +36,22 @@ export interface SimStore {
 }
 
 let ticker: ReturnType<typeof setInterval> | null = null;
+const MAX_CATCHUP_STEPS = 20; // 1 s of sim time per interval at most
 
 function ensureTicker(): void {
   if (ticker !== null) return;
   if (typeof window === "undefined") return; // never tick during SSR
+  // Wall-clock driven: if the tab is throttled (background) or a frame is
+  // late, we catch up with several fixed 50 ms steps so sim time tracks real
+  // time while staying bit-identical to the headless driver.
+  let last = performance.now();
   ticker = setInterval(() => {
-    getSimEngine().step(TICK_MS);
+    const now = performance.now();
+    let due = Math.min(MAX_CATCHUP_STEPS, Math.floor((now - last) / TICK_MS));
+    if (due <= 0) return;
+    last += due * TICK_MS;
+    const e = getSimEngine();
+    while (due-- > 0) e.step(TICK_MS);
   }, TICK_MS);
 }
 

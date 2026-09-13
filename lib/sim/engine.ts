@@ -431,7 +431,8 @@ export function createEngine(seed: number): Engine {
 
         // Bag rules.
         const width = effectiveWidth(h);
-        const spongeTooFat = h.id === "sponge" && !h.compressed && world.bag.opening < BAG_OPENING_MAX;
+        // The sponge never fits the bag mouth unless it has been squeezed first.
+        const spongeTooFat = h.id === "sponge" && !h.compressed;
         if (spongeTooFat || width > world.bag.opening) {
           return mk("blocked", DURATION.release, noop, noop);
         }
