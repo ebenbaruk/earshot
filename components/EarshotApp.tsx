@@ -18,7 +18,7 @@ export function EarshotApp() {
           <div className="absolute inset-0">
             <SceneNoSSR className="h-full w-full" />
           </div>
-          <Hud vm={vm} />
+          <Hud vm={vm} actions={actions} />
         </section>
 
         <RightRail vm={vm} actions={actions} />

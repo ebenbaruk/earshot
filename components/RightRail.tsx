@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EarshotActions, EarshotViewModel } from "./view-model";
 import { Tabs, type TabDef } from "./Tabs";
 import { CorrectionLog } from "./CorrectionLog";
@@ -18,6 +18,31 @@ export function RightRail({
 }) {
   const [tab, setTab] = useState<TabKey>("corrections");
 
+  /**
+   * Corrections that no policy version has consumed yet — the ones the next
+   * distillation will eat. The log glows them while it runs.
+   */
+  const pendingIds = useMemo(() => {
+    const consumed = new Set(vm.policies.flatMap((p) => p.distilledFrom));
+    return new Set(
+      vm.corrections
+        .filter((c) => !consumed.has(c.id) && c.parsedCommand !== null)
+        .map((c) => c.id),
+    );
+  }, [vm.policies, vm.corrections]);
+
+  /**
+   * The distillation moment: when a new version lands, the rail brings the
+   * operator to it rather than waiting to be clicked.
+   */
+  const seenDistill = useRef(vm.lastDistilledAt);
+  useEffect(() => {
+    if (vm.lastDistilledAt == null) return;
+    if (vm.lastDistilledAt === seenDistill.current) return;
+    seenDistill.current = vm.lastDistilledAt;
+    setTab("policy");
+  }, [vm.lastDistilledAt]);
+
   const tabs: TabDef<TabKey>[] = [
     { key: "corrections", label: "Corrections", badge: vm.corrections.length },
     { key: "policy", label: "Policy", badge: `v${vm.currentVersion}` },
@@ -32,6 +57,8 @@ export function RightRail({
         <CorrectionLog
           corrections={vm.corrections}
           onSendText={actions.sendTextCorrection}
+          distilling={vm.distilling}
+          pendingIds={pendingIds}
         />
       ) : null}
 
@@ -41,6 +68,7 @@ export function RightRail({
           currentVersion={vm.currentVersion}
           selectedVersion={vm.selectedVersion}
           corrections={vm.corrections}
+          lastDistilledAt={vm.lastDistilledAt}
           onSelectVersion={actions.selectVersion}
           onActivateVersion={actions.activateVersion}
         />

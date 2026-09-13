@@ -60,6 +60,11 @@ export interface EarshotViewModel {
   distillError: string | null;
   /** Corrections recorded since `currentVersion` was created. 0 disables Distill. */
   pendingCorrectionCount: number;
+  /**
+   * epoch ms when the newest policy version landed, or null before the first
+   * distillation. The Policy panel types a version in only when it is fresh.
+   */
+  lastDistilledAt: number | null;
 
   // ---- voice --------------------------------------------------------------
   voice: VoiceStatus;
@@ -70,6 +75,10 @@ export interface EarshotViewModel {
   stopFlash: StopFlash | null;
   /** Most recent correction, for the "↳ nudge(-2, 0)" chip under the transcript. */
   lastCorrection: CorrectionEvent | null;
+  /** True while the robot is speaking its acknowledgement (mic input is muted). */
+  speaking: boolean;
+  /** Spoken acknowledgements on/off — the "Robot voice" overflow-menu item. */
+  voiceReplies: boolean;
 
   // ---- logs ---------------------------------------------------------------
   /** Ascending by ts. Panels reverse as needed. */
@@ -97,6 +106,14 @@ export interface EarshotActions {
   /** Mic on / off. */
   startVoice(): void;
   stopVoice(): void;
+  /** Spoken acknowledgements on / off. */
+  setVoiceReplies(enabled: boolean): void;
+  /**
+   * Current mic loudness, 0..1. Polled from an animation frame by the HUD level
+   * meter — deliberately an action and not a `vm` field, so a live waveform
+   * costs zero React renders.
+   */
+  getLevel(): number;
 
   /** Typed correction — same path as a spoken one, parseSource "text". */
   sendTextCorrection(text: string): void;

@@ -1,22 +1,20 @@
 "use client";
 
 import clsx from "clsx";
-import { useState } from "react";
-import type { SimStatus } from "@/lib/types";
-import type { EarshotViewModel } from "./view-model";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { OBJECT_COUNT, type SimStatus } from "@/lib/types";
+import type { EarshotActions, EarshotViewModel } from "./view-model";
 import { Chip, ThinkingDots } from "./primitives";
-import { formatElapsed, formatSkill, splitOnWord } from "./format";
+import { formatElapsed, formatSkill, markHalt } from "./format";
 
-/** The legend under "What can I say?" — real product copy, not mock data. */
-export const EXAMPLE_PHRASES: readonly string[] = [
-  "stop",
-  "a bit to the left",
-  "squeeze it first",
-  "open the gripper wider",
-  "widen the bag",
-  "not that one — the marker",
-  "lift it up",
-  "let go",
+/** The legend under "What can I say?" — the validated demo phrases. */
+export const EXAMPLE_PHRASES: readonly { text: string; hint?: string }[] = [
+  { text: "Stop, put the marker in last." },
+  { text: "Stop, a bit to the left." },
+  { text: "Stop, squeeze it first." },
+  { text: "Stop, lower it first.", hint: "egg" },
+  { text: "Continue." },
+  { text: "A little more to the left." },
 ];
 
 const STATUS_LABEL: Record<SimStatus, string> = {
@@ -33,6 +31,91 @@ function statusTone(s: SimStatus) {
   if (s === "failed") return "text-danger";
   if (s === "succeeded") return "text-ok";
   return "text-muted";
+}
+
+const STAGE_PIPS = Array.from({ length: OBJECT_COUNT }, (_, i) => i);
+
+/* -------------------------------------------------------------------------- */
+/* Level meter                                                                 */
+/* -------------------------------------------------------------------------- */
+
+const METER_W = 40;
+const METER_H = 16;
+const METER_BARS = 10;
+const BAR_W = 3;
+const BAR_GAP = (METER_W - METER_BARS * BAR_W) / (METER_BARS - 1);
+const METER_FPS = 30;
+
+/**
+ * A live mic meter: ten bars scrolling right to left, the newest on the right.
+ *
+ * The level is *polled* from an animation frame rather than subscribed to, so a
+ * 20 Hz audio signal never re-renders React. Fast attack / slow release, so it
+ * reads as a voice and not as noise.
+ */
+function LevelMeter({
+  active,
+  getLevel,
+  className,
+}: {
+  active: boolean;
+  getLevel: () => number;
+  className?: string;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(METER_W * dpr);
+    canvas.height = Math.round(METER_H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const history = new Array<number>(METER_BARS).fill(0);
+    let smoothed = 0;
+    let last = 0;
+    let frame = requestAnimationFrame(function draw(now: number) {
+      frame = requestAnimationFrame(draw);
+      if (now - last < 1000 / METER_FPS) return;
+      last = now;
+
+      const target = active ? Math.max(0, Math.min(1, getLevel())) : 0;
+      smoothed = target > smoothed ? target : smoothed * 0.78 + target * 0.22;
+      history.push(smoothed);
+      history.shift();
+
+      ctx.clearRect(0, 0, METER_W, METER_H);
+      for (let i = 0; i < METER_BARS; i += 1) {
+        const v = history[i];
+        const h = Math.max(2, v * (METER_H - 2));
+        const x = i * (BAR_W + BAR_GAP);
+        const y = (METER_H - h) / 2;
+        ctx.fillStyle = `rgba(255, 158, 69, ${(0.18 + 0.82 * v).toFixed(3)})`;
+        if (typeof ctx.roundRect === "function") {
+          ctx.beginPath();
+          ctx.roundRect(x, y, BAR_W, h, BAR_W / 2);
+          ctx.fill();
+        } else {
+          ctx.fillRect(x, y, BAR_W, h);
+        }
+      }
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [active, getLevel]);
+
+  return (
+    <canvas
+      ref={ref}
+      aria-hidden
+      style={{ width: METER_W, height: METER_H }}
+      className={clsx("shrink-0", className)}
+    />
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -63,17 +146,17 @@ function RunStatus({ vm }: { vm: EarshotViewModel }) {
 
       <div className="flex items-center gap-2 rounded-md border border-line bg-bg/75 px-2.5 py-1.5 backdrop-blur">
         <span className="tnum font-mono text-[12px] text-ink">
-          {vm.world.stagesDone} / 3
+          {vm.world.stagesDone} / {OBJECT_COUNT}
         </span>
         <span className="text-[11px] tracking-wider text-faint uppercase">
           packed
         </span>
         <span className="ml-1 flex items-center gap-1" aria-hidden>
-          {[0, 1, 2].map((i) => (
+          {STAGE_PIPS.map((i) => (
             <span
               key={i}
               className={clsx(
-                "h-1 w-5 rounded-full transition-colors duration-200 ease-out",
+                "h-1 w-4 rounded-full transition-colors duration-200 ease-out",
                 i < vm.world.stagesDone ? "bg-ok" : "bg-white/12",
               )}
             />
@@ -117,9 +200,130 @@ function PolicyLine({ vm }: { vm: EarshotViewModel }) {
 
 /* -------------------------------------------------------------------------- */
 
-function Transcript({ vm }: { vm: EarshotViewModel }) {
+/**
+ * The partial transcript, word by word.
+ *
+ * The fade-in is mount-driven, not state-driven: words are keyed by position,
+ * so a word that was already on screen keeps its DOM node (and its finished
+ * animation) while an appended word mounts fresh and fades in. Nothing here
+ * remembers anything — the whole component is a function of the current
+ * partial.
+ *
+ * When the stop word lands the line *locks*: the class comes off, so every
+ * word that arrives after the halt appears instantly and the red highlight is
+ * the last thing that moves. The lock is derived from the text itself (any
+ * known stop word still in the line), so it holds for the rest of the turn,
+ * long after the 1.4 s stop flash expires, and clears on its own at the next
+ * turn when the partial resets to "".
+ */
+function PartialLine({
+  partial,
+  stopWord,
+}: {
+  partial: string;
+  stopWord: string | null | undefined;
+}) {
+  const words = useMemo(() => partial.split(/\s+/).filter(Boolean), [partial]);
+  const marks = useMemo(() => markHalt(words, stopWord), [words, stopWord]);
+  const locked = marks.some(Boolean);
+
+  return (
+    <p className="font-mono text-[clamp(15px,1.9vw,22px)] leading-tight break-words text-ink">
+      {words.map((word, i) => (
+        <Fragment key={i}>
+          <span className={clsx("inline-block", !locked && "word-in")}>
+            {marks[i] ? (
+              <mark className="rounded bg-danger/30 px-1 text-danger">
+                {word}
+              </mark>
+            ) : (
+              word
+            )}
+          </span>
+          {i < words.length - 1 ? " " : null}
+        </Fragment>
+      ))}
+      {locked ? null : <span className="blink ml-0.5 text-accent">▌</span>}
+    </p>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+/** Mic state + live level + the robot's own voice, in one strip. */
+function VoiceBar({
+  vm,
+  actions,
+}: {
+  vm: EarshotViewModel;
+  actions: EarshotActions;
+}) {
+  if (vm.speaking) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-info/45 bg-info/10 px-3 py-1.5 backdrop-blur">
+        <span className="flex items-end gap-[2px]" aria-hidden>
+          <span className="dot-1 h-2 w-[3px] rounded-full bg-info" />
+          <span className="dot-2 h-3 w-[3px] rounded-full bg-info" />
+          <span className="dot-3 h-1.5 w-[3px] rounded-full bg-info" />
+        </span>
+        <span className="text-[12px] text-info">
+          robot speaking — mic muted
+        </span>
+      </div>
+    );
+  }
+
+  if (vm.voice === "off") {
+    return (
+      <div className="rounded-md border border-line bg-bg/70 px-3 py-1.5 text-[12px] text-faint backdrop-blur">
+        mic off — turn it on to correct the agent
+      </div>
+    );
+  }
+
+  const listening = vm.voice === "listening";
+  return (
+    <div
+      className={clsx(
+        "flex items-center gap-2.5 rounded-md border bg-bg/75 px-3 py-1.5 backdrop-blur",
+        vm.voice === "error" ? "border-danger/50" : "border-line",
+      )}
+    >
+      <span
+        className={clsx(
+          "relative h-1.5 w-1.5 shrink-0 rounded-full",
+          listening ? "mic-ring bg-accent" : vm.voice === "error" ? "bg-danger" : "blink bg-accent",
+        )}
+      />
+      <LevelMeter active={listening} getLevel={actions.getLevel} />
+      <span
+        className={clsx(
+          "text-[12px]",
+          vm.voice === "error" ? "text-danger" : "text-muted",
+        )}
+      >
+        {listening
+          ? vm.partial
+            ? "listening"
+            : "listening — say something"
+          : vm.voice === "connecting"
+            ? "connecting…"
+            : (vm.voiceError ?? "mic error")}
+      </span>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+function Transcript({
+  vm,
+  actions,
+}: {
+  vm: EarshotViewModel;
+  actions: EarshotActions;
+}) {
   const stopped = vm.stopFlash != null;
-  const parts = splitOnWord(vm.partial, vm.stopFlash?.word);
   const last = vm.lastCorrection;
   // Only for a correction from the run in progress, and only for a few seconds.
   const sinceCorrection = last ? vm.elapsedMs - last.ts : Infinity;
@@ -130,8 +334,6 @@ function Transcript({ vm }: { vm: EarshotViewModel }) {
     sinceCorrection < 4000;
   const showUnparsed =
     last != null && last.parsedCommand == null && sinceCorrection >= 0 && sinceCorrection < 6000;
-
-  const hasSomething = vm.partial.length > 0 || stopped || showNudge || showUnparsed;
 
   return (
     <div className="pointer-events-auto flex w-full max-w-[46rem] flex-col items-center gap-2">
@@ -158,20 +360,7 @@ function Transcript({ vm }: { vm: EarshotViewModel }) {
               : "border-line bg-bg/85",
           )}
         >
-          <p className="font-mono text-[clamp(15px,1.9vw,22px)] leading-tight break-words text-ink">
-            {parts ? (
-              <>
-                {parts.before}
-                <mark className="rounded bg-danger/30 px-1 text-danger">
-                  {parts.match}
-                </mark>
-                {parts.after}
-              </>
-            ) : (
-              vm.partial
-            )}
-            <span className="blink ml-0.5 text-accent">▌</span>
-          </p>
+          <PartialLine partial={vm.partial} stopWord={vm.stopFlash?.word} />
         </div>
       ) : null}
 
@@ -197,18 +386,7 @@ function Transcript({ vm }: { vm: EarshotViewModel }) {
         </div>
       ) : null}
 
-      {!hasSomething && vm.voice === "listening" ? (
-        <div className="flex items-center gap-2 rounded-md border border-line bg-bg/70 px-3 py-1.5 backdrop-blur">
-          <span className="mic-ring relative h-1.5 w-1.5 rounded-full bg-accent" />
-          <span className="text-[12px] text-muted">listening — say something</span>
-        </div>
-      ) : null}
-
-      {vm.voice === "off" ? (
-        <div className="rounded-md border border-line bg-bg/70 px-3 py-1.5 text-[12px] text-faint backdrop-blur">
-          mic off — turn it on to correct the agent
-        </div>
-      ) : null}
+      <VoiceBar vm={vm} actions={actions} />
     </div>
   );
 }
@@ -220,15 +398,18 @@ function PhraseLegend() {
   return (
     <div className="pointer-events-auto flex flex-col items-end gap-1.5">
       {open ? (
-        <div className="rise max-w-[15rem] rounded-md border border-line bg-bg/85 p-2.5 backdrop-blur">
+        <div className="rise max-w-[17rem] rounded-md border border-line bg-bg/85 p-2.5 backdrop-blur">
           <div className="label mb-2">try saying</div>
           <ul className="flex flex-col gap-1">
             {EXAMPLE_PHRASES.map((p) => (
               <li
-                key={p}
+                key={p.text}
                 className="font-mono text-[11.5px] leading-4 text-muted"
               >
-                “{p}”
+                “{p.text}”
+                {p.hint ? (
+                  <span className="ml-1 text-faint">· {p.hint}</span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -248,7 +429,13 @@ function PhraseLegend() {
 
 /* -------------------------------------------------------------------------- */
 
-export function Hud({ vm }: { vm: EarshotViewModel }) {
+export function Hud({
+  vm,
+  actions,
+}: {
+  vm: EarshotViewModel;
+  actions: EarshotActions;
+}) {
   return (
     <>
       {/* the one dramatic animation: a red flash around the whole scene */}
@@ -267,7 +454,7 @@ export function Hud({ vm }: { vm: EarshotViewModel }) {
         </div>
 
         <div className="flex flex-col items-center gap-3">
-          <Transcript vm={vm} />
+          <Transcript vm={vm} actions={actions} />
           <div className="flex w-full items-end justify-start">
             <PolicyLine vm={vm} />
           </div>

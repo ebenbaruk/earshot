@@ -65,12 +65,25 @@ function ContextTable({ states }: { states: WorldState[] }) {
 
 /* -------------------------------------------------------------------------- */
 
-function CorrectionItem({ c }: { c: CorrectionEvent }) {
+function CorrectionItem({
+  c,
+  distilling = false,
+}: {
+  c: CorrectionEvent;
+  /** True while this entry is being consumed by a distillation in flight. */
+  distilling?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const stopped = c.tStop != null;
 
   return (
-    <li className="relative pb-4 pl-5 last:pb-0">
+    <li
+      className={clsx(
+        "relative pb-4 pl-5 last:pb-0",
+        distilling &&
+          "distilling-glow rounded-md border border-accent/30 bg-accent-soft pt-1.5 pr-2",
+      )}
+    >
       {/* timeline rail */}
       <span
         aria-hidden
@@ -91,6 +104,11 @@ function CorrectionItem({ c }: { c: CorrectionEvent }) {
         <span className="font-mono text-[11px] text-faint">{c.id}</span>
         {stopped ? <Chip tone="danger">stop</Chip> : null}
         {c.preventive ? <Chip tone="neutral">preventive</Chip> : null}
+        {distilling ? (
+          <Chip tone="accent" className="ml-auto">
+            → distilling
+          </Chip>
+        ) : null}
       </div>
 
       <p className="mt-1.5 text-[13.5px] leading-snug text-ink">
@@ -150,9 +168,15 @@ function CorrectionItem({ c }: { c: CorrectionEvent }) {
 export function CorrectionLog({
   corrections,
   onSendText,
+  distilling = false,
+  pendingIds,
 }: {
   corrections: CorrectionEvent[];
   onSendText: (text: string) => void;
+  /** True while /api/distill is in flight. */
+  distilling?: boolean;
+  /** Corrections no policy version has consumed yet — what distillation eats. */
+  pendingIds?: ReadonlySet<string>;
 }) {
   const [draft, setDraft] = useState("");
   const items = [...corrections].reverse();
@@ -184,7 +208,10 @@ export function CorrectionLog({
                     <span className="h-px flex-1 bg-line" />
                   </li>
                 ) : null}
-                <CorrectionItem c={c} />
+                <CorrectionItem
+                  c={c}
+                  distilling={distilling && (pendingIds?.has(c.id) ?? false)}
+                />
               </Fragment>
             ))}
           </ol>

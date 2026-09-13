@@ -35,10 +35,23 @@ export interface VoiceStore {
    */
   lastStopLatencyMs: number | null;
   error: string | null;
+  /**
+   * Mic loudness, 0..1, updated at the 20 Hz frame rate. Read it imperatively
+   * (`useVoiceStore.getState().level`) from an animation frame — subscribing a
+   * React component to it would re-render the app twenty times a second.
+   */
+  level: number;
+  /** True while outgoing audio frames are being dropped (the robot is talking). */
+  muted: boolean;
   start(events?: VoiceEvents): Promise<void>;
   stop(): Promise<void>;
   /** Swap the consumer callbacks at any time, including while listening. */
   setEvents(events: VoiceEvents | null): void;
+  /**
+   * Drop / resume outgoing audio frames. Used by lib/voice/tts.ts so the
+   * robot's own voice is never transcribed as a correction.
+   */
+  muteInput(muted: boolean): void;
 }
 
 /** Module-level: one mic session per tab, mirrored by the store. */
@@ -81,6 +94,9 @@ export const useVoiceStore = create<VoiceStore>()((set) => {
             metrics.sinceSpeechStartedMs ?? metrics.sinceFirstPartialMs ?? null,
         });
       },
+      onLevel: (level) => {
+        set({ level });
+      },
     });
     return client;
   }
@@ -91,11 +107,13 @@ export const useVoiceStore = create<VoiceStore>()((set) => {
     lastFinal: null,
     lastStopLatencyMs: null,
     error: null,
+    level: 0,
+    muted: false,
 
     async start(events) {
       if (events !== undefined) consumer = events;
       const c = ensureClient();
-      set({ error: null, partial: "", lastStopLatencyMs: null });
+      set({ error: null, partial: "", lastStopLatencyMs: null, level: 0 });
       try {
         await c.start();
       } catch (cause) {
@@ -109,11 +127,16 @@ export const useVoiceStore = create<VoiceStore>()((set) => {
 
     async stop() {
       await client?.stop();
-      set({ status: "off", partial: "" });
+      set({ status: "off", partial: "", level: 0, muted: false });
     },
 
     setEvents(events) {
       consumer = events;
+    },
+
+    muteInput(muted) {
+      client?.setMuted(muted);
+      set(muted ? { muted: true, level: 0 } : { muted: false });
     },
   };
 });

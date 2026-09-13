@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 import type { EarshotActions, EarshotViewModel } from "./view-model";
-import { Button, Spinner, Toggle } from "./primitives";
+import { Button, Spinner, ThinkingDots, Toggle } from "./primitives";
 
 /* -------------------------------------------------------------------------- */
 
@@ -160,7 +160,13 @@ function VersionPill({
 
 /* -------------------------------------------------------------------------- */
 
-function OverflowMenu({ actions }: { actions: EarshotActions }) {
+function OverflowMenu({
+  vm,
+  actions,
+}: {
+  vm: EarshotViewModel;
+  actions: EarshotActions;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -206,6 +212,27 @@ function OverflowMenu({ actions }: { actions: EarshotActions }) {
           role="menu"
           className="rise absolute top-9 right-0 z-30 min-w-[200px] rounded-md border border-line bg-raised p-1 shadow-2xl shadow-black/60"
         >
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={vm.voiceReplies}
+            title="The robot answers your corrections out loud. Its mic input is muted while it speaks."
+            onClick={() => actions.setVoiceReplies(!vm.voiceReplies)}
+            className="flex w-full items-center justify-between gap-3 rounded px-2 py-1.5 text-left text-[12.5px] text-ink transition-colors duration-150 ease-out hover:bg-white/[0.05]"
+          >
+            Robot voice
+            <span
+              className={clsx(
+                "text-[11px]",
+                vm.voiceReplies ? "text-accent" : "text-faint",
+              )}
+            >
+              {vm.voiceReplies ? "on" : "off"}
+            </span>
+          </button>
+
+          <div className="my-1 h-px bg-line" />
+
           <button
             type="button"
             role="menuitem"
@@ -335,7 +362,8 @@ export function TopBar({
           {vm.distilling ? (
             <>
               <Spinner />
-              Distilling…
+              Distilling
+              <ThinkingDots className="ml-0.5" />
             </>
           ) : (
             <>
@@ -362,7 +390,7 @@ export function TopBar({
             onStart={actions.startVoice}
             onStop={actions.stopVoice}
           />
-          <OverflowMenu actions={actions} />
+          <OverflowMenu vm={vm} actions={actions} />
         </div>
       </div>
     </header>

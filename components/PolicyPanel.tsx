@@ -1,10 +1,46 @@
 "use client";
 
 import clsx from "clsx";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CorrectionEvent, PolicyRule, PolicyVersion } from "@/lib/types";
 import { EmptyState } from "./primitives";
 import { formatSkill } from "./format";
+
+/* -------------------------------------------------------------------------- */
+
+/** Typewriter cadence, and the ceiling that keeps the whole moment under 4 s. */
+const TYPE_MS = 25;
+const TYPE_MAX_TICKS = 120; // 120 × 25 ms = 3 s, whatever the rule's length
+/** A distillation older than this is being browsed, not arriving. */
+const FRESH_MS = 4000;
+
+/**
+ * Reveal `total` characters at ~25 ms each. Rules type in parallel, so three of
+ * them land together rather than one after another.
+ */
+function useTypedCount(total: number, active: boolean): number {
+  // Only ever written from the interval callback, so the typewriter costs no
+  // cascading render and a row that is not typing needs no state at all.
+  const [typed, setTyped] = useState(0);
+
+  useEffect(() => {
+    if (!active) return;
+    const step = Math.max(1, Math.ceil(total / TYPE_MAX_TICKS));
+    let i = 0;
+    const id = setInterval(() => {
+      i += step;
+      setTyped(Math.min(total, i));
+      if (i >= total) clearInterval(id);
+    }, TYPE_MS);
+    return () => clearInterval(id);
+  }, [total, active]);
+
+  return active ? Math.min(typed, total) : total;
+}
+
+function Caret() {
+  return <span className="caret" aria-hidden />;
+}
 
 /* -------------------------------------------------------------------------- */
 
@@ -25,12 +61,21 @@ function RuleRow({
   rule,
   mode,
   corrections,
+  typing = false,
 }: {
   rule: PolicyRule;
   mode: "added" | "removed" | "kept";
   corrections: CorrectionEvent[];
+  /** True the moment this rule arrives from a distillation: type it in. */
+  typing?: boolean;
 }) {
   const evidence = evidenceText(rule.evidence, corrections);
+  const total = rule.when.length + rule.do.length;
+  const typed = useTypedCount(total, typing);
+  const shownWhen = rule.when.slice(0, typed);
+  const shownDo = rule.do.slice(0, Math.max(0, typed - rule.when.length));
+  const done = typed >= total;
+
   return (
     <li
       className={clsx(
@@ -38,6 +83,7 @@ function RuleRow({
         mode === "added" && "border-ok/30 bg-ok-soft",
         mode === "removed" && "border-danger/30 bg-danger-soft",
         mode === "kept" && "border-line bg-white/[0.02]",
+        typing && "sweep",
       )}
     >
       <div className="flex items-start gap-2">
@@ -63,16 +109,27 @@ function RuleRow({
           <span className="text-[11px] tracking-wider uppercase opacity-60">
             when{" "}
           </span>
-          {rule.when}
-          <br />
-          <span className="text-[11px] tracking-wider uppercase opacity-60">
-            do{" "}
-          </span>
-          {rule.do}
+          {shownWhen}
+          {typed < rule.when.length ? <Caret /> : null}
+          {typed >= rule.when.length ? (
+            <>
+              <br />
+              <span className="text-[11px] tracking-wider uppercase opacity-60">
+                do{" "}
+              </span>
+              {shownDo}
+              {!done ? <Caret /> : null}
+            </>
+          ) : null}
         </div>
       </div>
-      {evidence && mode !== "removed" ? (
-        <p className="mt-1.5 pl-5 text-[11.5px] leading-snug text-faint">
+      {evidence && mode !== "removed" && done ? (
+        <p
+          className={clsx(
+            "mt-1.5 pl-5 text-[11.5px] leading-snug text-faint",
+            typing && "fade-in",
+          )}
+        >
           evidence: {evidence}
         </p>
       ) : null}
@@ -87,6 +144,7 @@ export function PolicyPanel({
   currentVersion,
   selectedVersion,
   corrections,
+  lastDistilledAt = null,
   onSelectVersion,
   onActivateVersion,
 }: {
@@ -94,10 +152,26 @@ export function PolicyPanel({
   currentVersion: number;
   selectedVersion: number;
   corrections: CorrectionEvent[];
+  /** epoch ms when the newest version landed; drives the typewriter. */
+  lastDistilledAt?: number | null;
   onSelectVersion: (v: number) => void;
   onActivateVersion: (v: number) => void;
 }) {
   const [showShots, setShowShots] = useState(false);
+
+  /**
+   * The distillation moment. A version that *just* arrived types itself in; one
+   * the operator navigated back to simply renders. `clock` starts at mount and
+   * is bumped once, by a timer, when the window closes — so the animation can
+   * never replay and nothing is computed impurely during render.
+   */
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (lastDistilledAt == null) return;
+    const id = setTimeout(() => setClock(Date.now()), FRESH_MS);
+    return () => clearTimeout(id);
+  }, [lastDistilledAt]);
+  const fresh = lastDistilledAt != null && clock < lastDistilledAt + FRESH_MS;
 
   const selected =
     policies.find((p) => p.version === selectedVersion) ??
@@ -115,6 +189,9 @@ export function PolicyPanel({
   const added = selected.rules.filter((r) => !prevIds.has(r.id));
   const kept = selected.rules.filter((r) => prevIds.has(r.id));
   const removed = (parent?.rules ?? []).filter((r) => !nextIds.has(r.id));
+
+  const newestVersion = policies.reduce((m, p) => Math.max(m, p.version), 0);
+  const typing = fresh && selected.version === newestVersion;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -171,18 +248,29 @@ export function PolicyPanel({
       ) : (
         <ul className="flex flex-col gap-1.5">
           {added.map((r) => (
-            <RuleRow key={r.id} rule={r} mode="added" corrections={corrections} />
+            <RuleRow
+              key={`v${selected.version}-${r.id}`}
+              rule={r}
+              mode="added"
+              corrections={corrections}
+              typing={typing}
+            />
           ))}
           {removed.map((r) => (
             <RuleRow
-              key={`-${r.id}`}
+              key={`v${selected.version}--${r.id}`}
               rule={r}
               mode="removed"
               corrections={corrections}
             />
           ))}
           {kept.map((r) => (
-            <RuleRow key={r.id} rule={r} mode="kept" corrections={corrections} />
+            <RuleRow
+              key={`v${selected.version}-${r.id}`}
+              rule={r}
+              mode="kept"
+              corrections={corrections}
+            />
           ))}
         </ul>
       )}

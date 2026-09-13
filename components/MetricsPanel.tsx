@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { CorrectionEvent, RunRecord } from "@/lib/types";
+import { OBJECT_COUNT, type CorrectionEvent, type RunRecord } from "@/lib/types";
 import { EmptyState } from "./primitives";
 
 /** A run counts as supervised only if a human actually intervened. */
@@ -31,6 +31,8 @@ const SUPERVISED = "#db7724"; // amber — runs with voice corrections enabled
 const AUTONOMOUS = "#30a268"; // green — ablation runs, no human in the loop
 const GRID = "rgba(255,255,255,0.07)";
 const AXIS = "#6a645d";
+
+const STAGE_TICKS = Array.from({ length: OBJECT_COUNT + 1 }, (_, i) => i);
 
 interface Point {
   run: number;
@@ -174,7 +176,7 @@ export function MetricsPanel({
       interventionTrail: interventions.length ? interventions.join(" → ") : "—",
       stagesDelta:
         first && last
-          ? `${first.stagesDone} → ${last.stagesDone} / 3`
+          ? `${first.stagesDone} → ${last.stagesDone} / ${OBJECT_COUNT}`
           : "—",
       stagesHint:
         first && last
@@ -182,8 +184,12 @@ export function MetricsPanel({
           : "run an ablation to compare",
       avgStop: avgStop != null ? `${avgStop} ms` : "—",
       avgStopHint: `${stops.length} measured stop${stops.length === 1 ? "" : "s"}`,
-      latestSupervised: latestSupervised ? `${latestSupervised.stagesDone} / 3` : "—",
-      latestAutonomous: latestAutonomous ? `${latestAutonomous.stagesDone} / 3` : "—",
+      latestSupervised: latestSupervised
+        ? `${latestSupervised.stagesDone} / ${OBJECT_COUNT}`
+        : "—",
+      latestAutonomous: latestAutonomous
+        ? `${latestAutonomous.stagesDone} / ${OBJECT_COUNT}`
+        : "—",
     };
   }, [runs, corrections]);
 
@@ -248,8 +254,8 @@ export function MetricsPanel({
               axisLine={{ stroke: GRID }}
             />
             <YAxis
-              domain={[0, 3]}
-              ticks={[0, 1, 2, 3]}
+              domain={[0, OBJECT_COUNT]}
+              ticks={STAGE_TICKS}
               tick={{ fill: AXIS, fontSize: 11 }}
               tickLine={false}
               axisLine={false}
@@ -271,7 +277,7 @@ export function MetricsPanel({
             ))}
             <Tooltip
               cursor={{ stroke: "rgba(255,255,255,0.18)" }}
-              content={<ChartTip unit="/ 3" />}
+              content={<ChartTip unit={`/ ${OBJECT_COUNT}`} />}
             />
             <Line
               type="monotone"
@@ -336,7 +342,8 @@ export function MetricsPanel({
 
       <p className="mt-4 max-w-[52ch] text-[12px] leading-relaxed text-muted">
         Each distillation is marked on the x axis. The green line is the agent
-        running with no human in the loop — when it reaches 3 / 3 and the bars
+        running with no human in the loop — when it reaches {OBJECT_COUNT} /{" "}
+        {OBJECT_COUNT} and the bars
         reach zero, the corrections have been absorbed into the policy.
       </p>
     </div>
