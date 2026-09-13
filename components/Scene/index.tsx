@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useLayoutEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, OrbitControls } from "@react-three/drei";
 import { ACESFilmicToneMapping } from "three";
@@ -11,6 +11,8 @@ import { Table } from "./Table";
 import { Bag } from "./Bag";
 import { SimObjects } from "./SimObjects";
 import { Gripper } from "./Gripper";
+import { DustMotes, GhostTrail } from "./Effects";
+import { AlignmentGizmo } from "./Debug";
 
 /** Fixed three-quarter framing. Distance/height tuned to hold the table, bag and gantry. */
 const CAM_POS: [number, number, number] = [-33, 51, 92];
@@ -18,6 +20,9 @@ const LOOK_AT: [number, number, number] = [-1, 4.5, 0];
 /** Peak yaw of the idle drift, in radians (≈ 1°), over DRIFT_PERIOD seconds. */
 const DRIFT = 0.0175;
 const DRIFT_PERIOD = 20;
+/** How far the camera creeps in when the run is won, and how fast it gets there. */
+const WIN_PUSH = 0.92;
+const PUSH_RATE = 1.05;
 
 /** Styles for the drei <Html> labels. Scoped here so the Scene owns its own CSS. */
 const LABEL_CSS = `
@@ -25,6 +30,8 @@ const LABEL_CSS = `
 .scene-label-dim{font-weight:500;color:#9fb0d0}
 .scene-badge{font:600 9.5px/1.25 ui-sans-serif,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#bcd0ff;background:rgba(96,132,255,.2);border:1px solid rgba(130,164,255,.4);border-radius:999px;padding:1px 6px}
 .scene-badge-alert{color:#fff;background:rgba(214,42,42,.92);border-color:rgba(255,150,150,.65);box-shadow:0 0 12px rgba(255,60,60,.5)}
+@keyframes scene-stop-flash{0%{opacity:.7}22%{opacity:.45}100%{opacity:0}}
+.scene-stopflash{position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 42%,#fff 0%,#ffd9a8 38%,rgba(255,190,120,0) 72%);mix-blend-mode:screen;opacity:0;animation:scene-stop-flash .42s ease-out forwards;pointer-events:none}
 `;
 
 /**
@@ -38,6 +45,8 @@ function CameraRig({ drift }: { drift: boolean }) {
   const radius = useMemo(() => Math.hypot(CAM_POS[0], CAM_POS[2]), []);
   const angle0 = useMemo(() => Math.atan2(CAM_POS[0], CAM_POS[2]), []);
   const t = useRef(0);
+  /** 1 = framing as designed, WIN_PUSH = pushed in on a win. */
+  const push = useRef(1);
 
   useLayoutEffect(() => {
     const aspect = size.width / Math.max(1, size.height);
@@ -58,11 +67,15 @@ function CameraRig({ drift }: { drift: boolean }) {
     t.current += dt;
     const phase = (t.current / DRIFT_PERIOD) * Math.PI * 2;
     const a = angle0 + Math.sin(phase) * DRIFT;
+    // A slow ~8 % push-in on a win, easing back out when the run is reset.
+    const want = useSimStore.getState().world.status === "succeeded" ? WIN_PUSH : 1;
+    push.current += (want - push.current) * (1 - Math.exp(-Math.min(dt, 0.1) * PUSH_RATE));
+    const k = push.current;
     const cam = frame.camera;
     cam.position.set(
-      Math.sin(a) * radius,
-      base.y + Math.sin(phase + 1.2) * 0.7,
-      Math.cos(a) * radius,
+      LOOK_AT[0] + (Math.sin(a) * radius - LOOK_AT[0]) * k,
+      LOOK_AT[1] + (base.y + Math.sin(phase + 1.2) * 0.7 - LOOK_AT[1]) * k,
+      LOOK_AT[2] + (Math.cos(a) * radius - LOOK_AT[2]) * k,
     );
     cam.lookAt(LOOK_AT[0], LOOK_AT[1], LOOK_AT[2]);
   });
@@ -74,11 +87,29 @@ export interface SceneProps {
   className?: string;
   /** Enable OrbitControls (off by default — the demo uses a fixed three-quarter view). */
   orbit?: boolean;
+  /** Preview only: plumb lines through the finger gap and every object origin. */
+  debug?: boolean;
 }
 
 /** The Earshot world: table, bag, objects and gantry gripper, driven by `useSimStore`. */
-export function Scene({ className, orbit = false }: SceneProps) {
-  const paused = useSimStore((s) => s.world.status === "paused");
+export function Scene({ className, orbit = false, debug = false }: SceneProps) {
+  const status = useSimStore((s) => s.world.status);
+  const paused = status === "paused";
+  const won = status === "succeeded";
+  // Re-mounting the flash div is what replays its keyframes on every stop, so
+  // count the transitions into `paused` straight off the store.
+  const [stops, setStops] = useState(0);
+  const prevStatus = useRef(status);
+  useEffect(
+    () =>
+      useSimStore.subscribe((st) => {
+        const next = st.world.status;
+        if (next === prevStatus.current) return;
+        prevStatus.current = next;
+        if (next === "paused") setStops((n) => n + 1);
+      }),
+    [],
+  );
 
   return (
     <div className={clsx("relative h-full w-full min-h-[360px] overflow-hidden", className)}>
@@ -98,6 +129,9 @@ export function Scene({ className, orbit = false }: SceneProps) {
           <Bag />
           <SimObjects />
           <Gripper />
+          <GhostTrail />
+          <DustMotes />
+          {debug ? <AlignmentGizmo /> : null}
           {/* Contact shadows glue everything to the table top.
               The capture camera starts at y = 0.14 so the decorative glow planes
               that sit flat on the table (light pool, landing pool, grasp halo)
@@ -115,16 +149,30 @@ export function Scene({ className, orbit = false }: SceneProps) {
         {orbit ? <OrbitControls target={LOOK_AT} makeDefault /> : null}
       </Canvas>
 
-      {/* vignette; turns red while the run is paused */}
+      {/* the world drains of colour the moment the operator says stop */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 transition-[backdrop-filter] duration-[450ms]"
+        style={{
+          backdropFilter: paused ? "saturate(.42) brightness(.94) contrast(1.04)" : "none",
+        }}
+      />
+
+      {/* vignette; turns red while the run is paused, green once it is won */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 transition-[box-shadow] duration-500"
         style={{
           boxShadow: paused
             ? "inset 0 0 120px 24px rgba(220,38,38,.42), inset 0 0 320px 90px rgba(0,0,0,.55)"
-            : "inset 0 0 170px 46px rgba(0,0,0,.58)",
+            : won
+              ? "inset 0 0 130px 30px rgba(46,240,160,.2), inset 0 0 320px 90px rgba(0,0,0,.5)"
+              : "inset 0 0 170px 46px rgba(0,0,0,.58)",
         }}
       />
+
+      {/* one-frame-feel white flash on every stop */}
+      {stops > 0 ? <div key={stops} aria-hidden className="scene-stopflash" /> : null}
     </div>
   );
 }

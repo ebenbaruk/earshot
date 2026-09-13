@@ -63,6 +63,20 @@ export function Table() {
         />
       </mesh>
 
+      {/* countersunk screws at the corners of the work surface */}
+      {LEGS.map(([x, z]) => (
+        <group key={`screw:${x}:${z}`} position={[x * 0.92, 0.01, z * 0.86]}>
+          <mesh castShadow>
+            <cylinderGeometry args={[0.46, 0.5, 0.16, 16]} />
+            <meshStandardMaterial color="#8c8577" roughness={0.34} metalness={0.85} />
+          </mesh>
+          <mesh position={[0, 0.09, 0]} rotation={[0, 0.6, 0]}>
+            <boxGeometry args={[0.72, 0.06, 0.14]} />
+            <meshStandardMaterial color="#4a4438" roughness={0.5} metalness={0.6} />
+          </mesh>
+        </group>
+      ))}
+
       {/* legs */}
       {LEGS.map(([x, z]) => (
         <mesh key={`${x}:${z}`} position={[x, (FLOOR_Y - THICKNESS - 0.7) / 2, z]} castShadow>

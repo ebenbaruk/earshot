@@ -7,13 +7,14 @@
 
 import { useRef, useState } from "react";
 import { SceneNoSSR } from "@/components/Scene/SceneNoSSR";
-import { getSimEngine, useSimStore } from "@/store/useSimStore";
-import type { SkillCommand, SkillOutcome } from "@/lib/types";
+import { DEFAULT_SEED, getSimEngine, useSimStore } from "@/store/useSimStore";
+import type { ObjectId, SkillCommand, SkillOutcome } from "@/lib/types";
 
 const QUICK: Array<[string, SkillCommand]> = [
   ["→ marker", { skill: "move_to", target: "marker" }],
   ["→ sponge", { skill: "move_to", target: "sponge" }],
   ["→ tape", { skill: "move_to", target: "tape_holder" }],
+  ["→ egg", { skill: "move_to", target: "egg" }],
   ["→ bag", { skill: "move_to", target: "bag" }],
   ["descend", { skill: "descend" }],
   ["grasp", { skill: "grasp" }],
@@ -26,11 +27,19 @@ const QUICK: Array<[string, SkillCommand]> = [
   ["stop", { skill: "stop" }],
 ];
 
-const pick = (id: "marker" | "sponge" | "tape_holder"): SkillCommand[] => [
+const pick = (id: ObjectId): SkillCommand[] => [
   { skill: "move_to", target: id },
   { skill: "descend" },
   { skill: "grasp" },
   { skill: "lift" },
+];
+
+/** Lower the item to the rim before letting go — the only way the egg survives. */
+const packGently = (id: ObjectId): SkillCommand[] => [
+  ...pick(id),
+  { skill: "move_to", target: "bag" },
+  { skill: "descend" },
+  { skill: "release" },
 ];
 
 /**
@@ -118,11 +127,27 @@ const SCENES: Array<[string, SkillCommand[]]> = [
     ],
   ],
   [
+    // Drops the egg from carry height over the bag: it cracks, the mess fades,
+    // a fresh one is put back on the table.
+    "crack the egg",
+    [
+      ...pick("egg"),
+      { skill: "move_to", target: "bag" },
+      { skill: "release" },
+    ],
+  ],
+  [
+    // The same beat done right: descend to the rim first, then let go.
+    "pack the egg properly",
+    packGently("egg"),
+  ],
+  [
     "fill the bag",
     [
       ...pick("sponge"),
       { skill: "squeeze" },
       { skill: "move_to", target: "bag" },
+      { skill: "descend" },
       { skill: "release" },
       { skill: "move_to", target: "tape_holder" },
       { skill: "descend" },
@@ -131,10 +156,10 @@ const SCENES: Array<[string, SkillCommand[]]> = [
       { skill: "grasp" },
       { skill: "lift" },
       { skill: "move_to", target: "bag" },
+      { skill: "descend" },
       { skill: "release" },
-      ...pick("marker"),
-      { skill: "move_to", target: "bag" },
-      { skill: "release" },
+      ...packGently("egg"),
+      ...packGently("marker"),
     ],
   ],
 ];
@@ -149,6 +174,7 @@ export default function SimPreviewPage() {
   const store = useSimStore.getState();
   const [log, setLog] = useState<string[]>([]);
   const [hud, setHud] = useState(true);
+  const [debug, setDebug] = useState(false);
   const running = useRef(false);
 
   const push = (line: string) => setLog((l) => [line, ...l].slice(0, 14));
@@ -158,12 +184,24 @@ export default function SimPreviewPage() {
     push(`${cmd.skill} → ${outcome}`);
   };
 
+  /** Set pieces always start from a fresh seed, so they can be replayed at will. */
   const runScript = async (script: SkillCommand[]) => {
     if (running.current) return;
     running.current = true;
+    store.reset(DEFAULT_SEED);
+    setLog([]);
     store.start();
     try {
       for (const cmd of script) {
+        // The scene renders whatever the world contains; a script that names an
+        // object this engine build does not have is skipped instead of throwing.
+        if (cmd.skill === "move_to" && typeof cmd.target === "string" && cmd.target !== "bag") {
+          const known = useSimStore.getState().world.objects.some((o) => o.id === cmd.target);
+          if (!known) {
+            push(`move_to ${cmd.target} → skipped (not in this world)`);
+            break;
+          }
+        }
         const outcome = await store.execute(cmd);
         push(`${cmd.skill} → ${outcome}`);
         if (useSimStore.getState().world.status === "failed") break;
@@ -171,6 +209,14 @@ export default function SimPreviewPage() {
     } finally {
       running.current = false;
     }
+  };
+
+  /** Kick off a long traverse and hit stop half way: the pause flash set piece. */
+  const stopMidMove = () => {
+    store.reset(DEFAULT_SEED);
+    store.start();
+    void store.execute({ skill: "move_to", target: "tape_holder" });
+    window.setTimeout(() => store.pause(), 420);
   };
 
   const btn =
@@ -184,8 +230,9 @@ export default function SimPreviewPage() {
         <button className={btn} onClick={() => store.start()}>start</button>
         <button className={btn} onClick={() => store.pause()}>pause</button>
         <button className={btn} onClick={() => store.resume()}>resume</button>
-        <button className={btn} onClick={() => { store.reset(42); setLog([]); }}>reset 42</button>
+        <button className={btn} onClick={() => { store.reset(DEFAULT_SEED); setLog([]); }}>reset 42</button>
         <button className={btnHot} onClick={() => void runScript(DEMO)}>run demo</button>
+        <button className={btn} onClick={stopMidMove}>stop mid-move</button>
         <span className="mx-1 h-4 w-px bg-zinc-700" />
         {SCENES.map(([label, script]) => (
           <button key={label} className={btnHot} onClick={() => void runScript(script)}>
@@ -200,15 +247,18 @@ export default function SimPreviewPage() {
         ))}
         <span className="mx-1 h-4 w-px bg-zinc-700" />
         <button className={btn} onClick={() => setHud((h) => !h)}>{hud ? "hide hud" : "show hud"}</button>
+        <button className={btn} onClick={() => setDebug((d) => !d)}>
+          {debug ? "hide plumb lines" : "plumb lines"}
+        </button>
       </div>
 
       <div className="relative flex-1">
-        <SceneNoSSR />
+        <SceneNoSSR debug={debug} />
         {hud ? (
           <>
             <div className="pointer-events-none absolute left-3 top-3 rounded bg-black/60 p-2 font-mono text-[11px] leading-5 text-zinc-300">
               <div>
-                status <b>{world.status}</b> · t {Math.round(world.t)}ms · stages {world.stagesDone}/3
+                status <b>{world.status}</b> · t {Math.round(world.t)}ms · stages {world.stagesDone}/{world.objects.length}
               </div>
               <div>
                 gripper ({world.gripper.pos.x.toFixed(1)}, {world.gripper.pos.y.toFixed(1)}) z
