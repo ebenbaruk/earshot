@@ -222,6 +222,17 @@ function OverflowMenu({ actions }: { actions: EarshotActions }) {
           >
             Import runs (JSON)…
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              actions.clearAll();
+              setOpen(false);
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-[12.5px] text-danger transition-colors duration-150 ease-out hover:bg-white/[0.05]"
+          >
+            Reset data (runs, corrections, policy → v0)
+          </button>
           <input
             ref={file}
             type="file"

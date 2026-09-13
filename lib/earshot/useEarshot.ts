@@ -77,6 +77,7 @@ export function useEarshot(): { vm: EarshotViewModel; actions: EarshotActions } 
       startVoice: () => controller.startVoice(),
       stopVoice: () => controller.stopVoice(),
       sendTextCorrection: (text) => controller.sendTextCorrection(text),
+      clearAll: () => controller.clearAll(),
       exportJSON: () => controller.exportJSON(),
       importJSON: (json) => controller.importJSON(json),
     }),

@@ -101,6 +101,8 @@ export interface EarshotActions {
   /** Typed correction — same path as a spoken one, parseSource "text". */
   sendTextCorrection(text: string): void;
 
+  /** Wipe runs, corrections and learned policy versions; back to a fresh v0 demo. */
+  clearAll(): void;
   /** Runs + corrections as JSON, for the top-bar Export item. */
   exportJSON(): string;
   importJSON(json: string): void;
