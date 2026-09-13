@@ -23,6 +23,7 @@ import { distill } from "../lib/policy/distill";
 import { extractOrderHint, parseCorrectionFast } from "../lib/corrections/grammar";
 import { resolveOrderHint } from "../lib/corrections/order";
 import { applyConstraints, emptyConstraints, learnFromCorrection } from "../lib/earshot/constraints";
+import { isDithering } from "../lib/earshot/watchdog";
 import { describeCommand } from "../lib/policy/command-codec";
 
 for (const file of [".env.local", ".env"]) {
@@ -74,7 +75,7 @@ async function runOnce(seed: number, policy: PolicyVersion, operator: Operator, 
   const constraints = emptyConstraints();
   const corrections: CorrectionEvent[] = [];
   const said = new Set<string>();
-  let lastKey: string | null = null; let repeat = 0;
+  let recent: string[] = [];
   let steps = 0; let llmMs = 0; let fallbacks = 0;
   let last: { command: SkillCommand; outcome: SkillOutcome } | null = null;
   let inFlight: PolicyDecision | null = null;
@@ -109,9 +110,8 @@ async function runOnce(seed: number, policy: PolicyVersion, operator: Operator, 
     if (decision.command.skill === "stop" && e.world.stagesDone < 3) {
       decision = { ...fallbackDecision(obs), reasoning: "[override: early stop]" };
     }
-    const key = JSON.stringify(decision.command);
-    repeat = key === lastKey ? repeat + 1 : 1; lastKey = key;
-    if (repeat >= 3) { decision = { ...fallbackDecision(obs), reasoning: "[override: looping]" }; repeat = 0; lastKey = null; }
+    recent.push(JSON.stringify(decision.command)); if (recent.length > 4) recent.shift();
+    if (isDithering(recent)) { decision = { ...fallbackDecision(obs), reasoning: "[override: looping]" }; recent = []; }
     const shaped = applyConstraints(constraints, decision.command, obs);
     inFlight = decision;
     const r = await runSkill(e, shaped.command);

@@ -32,6 +32,7 @@ import { fallbackDecision } from "@/lib/policy/fallback";
 import { extractOrderHint, parseCorrectionFast } from "@/lib/corrections/grammar";
 import { resolveOrderHint } from "@/lib/corrections/order";
 import { applyConstraints, emptyConstraints, learnFromCorrection, type RunConstraints } from "./constraints";
+import { isDithering } from "./watchdog";
 import { parseCorrection } from "@/lib/corrections/parse";
 import { findStopWord, normalizeCorrection } from "@/lib/voice/stopwords";
 
@@ -45,8 +46,7 @@ let stopFlashTimer: ReturnType<typeof setTimeout> | null = null;
 let frozenContext: WorldState[] | null = null;
 let lastStopT: number | null = null; // world.t when the last stop landed; consumed by the next correction
 let inFlightDecision: PolicyDecision | null = null; // the skill the policy is executing right now
-let lastCommandKey: string | null = null; // watchdog against a policy that repeats itself
-let repeatCount = 0;
+let recentKeys: string[] = []; // watchdog against a policy that repeats or dithers (A-B-A-B)
 let constraints: RunConstraints = emptyConstraints(); // operator facts that hold for the run
 let correctionQueue: Promise<void> = Promise.resolve();
 
@@ -62,6 +62,7 @@ const execute = (cmd: SkillCommand) => useSimStore.getState().execute(cmd);
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
 }
+
 
 function isTerminal(status: WorldState["status"]) {
   return status === "succeeded" || status === "failed";
@@ -201,22 +202,22 @@ async function policyLoop(): Promise<void> {
         const fb = fallbackDecision(engine().getObservation());
         decision = { command: fb.command, reasoning: `[override: policy stopped early] ${fb.reasoning.replace(/^\[fallback\] /, "")}` };
       }
-      // Watchdog: the same command three times in a row without the world
-      // changing means the policy is looping. Hand one step to the planner.
-      const key = JSON.stringify(decision.command);
-      repeatCount = key === lastCommandKey ? repeatCount + 1 : 1;
-      lastCommandKey = key;
-      if (repeatCount >= 3) {
+      // Watchdog: the same command three times in a row, or two commands
+      // alternating four times (set_gripper / move_to …), means the policy is
+      // dithering without progress. Hand one step to the planner.
+      recentKeys.push(JSON.stringify(decision.command));
+      if (recentKeys.length > 4) recentKeys.shift();
+      if (isDithering(recentKeys)) {
         const fb = fallbackDecision(engine().getObservation());
         decision = { command: fb.command, reasoning: `[override: policy looping] ${fb.reasoning.replace(/^\[fallback\] /, "")}` };
-        repeatCount = 0;
-        lastCommandKey = null;
+        recentKeys = [];
       }
       const shaped = applyConstraints(constraints, decision.command, engine().getObservation());
       if (shaped.note) decision = { command: shaped.command, reasoning: `${decision.reasoning} [${shaped.note}]` };
       session().set({ decision });
       inFlightDecision = decision;
       const out = await execute(decision.command);
+      if (out === "ok" && (decision.command.skill === "grasp" || decision.command.skill === "release")) recentKeys = [];
       if (shaped.followUp && out === "ok" && engine().world.status === "running") {
         await execute(shaped.followUp);
       }
@@ -382,8 +383,7 @@ export const controller = {
       session().set({ decision: null, stopFlash: null, lastCorrection: null });
     }
     if (e.world.status === "idle") {
-      lastCommandKey = null;
-      repeatCount = 0;
+      recentKeys = [];
       constraints = emptyConstraints();
       beginRun();
       useSimStore.getState().start();
