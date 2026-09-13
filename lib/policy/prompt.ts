@@ -23,7 +23,7 @@ const SKILL_LIBRARY = `## Skill library (the only actions that exist)
 - lift               raise the gripper back up.
 - release            open the fingers and let go of what is held.
 - nudge(dx, dy)      small xy adjustment of the gripper, in cm.
-- squeeze            compress the held object.
+- squeeze            clamp the fingers hard on whatever is held.
 - wait               do nothing for a moment.
 - stop               end the run.
 
@@ -48,7 +48,7 @@ set_gripper exists but is rarely needed: descend already opens the gripper to th
 ## Reacting to the last outcome
 - ok: continue with the next step of the sequence.
 - slipped or missed: retry the same approach at most ONCE; if it fails again, lift and re-approach, or move on to a different object. Never set the gripper narrower than the object width + 0.5 — a narrower gripper always slips.
-- blocked on release: the item does not fit into the bag as it is. Repeating the same release will block again; change something about the item or the approach before trying again.
+- blocked on release: the release did not go through. Do not repeat the exact same release; lift, re-approach, or move on to another object and come back.
 - rolled_out: an item left the bag; re-plan rather than repeating what you just did.
 - cracked: the item broke on release and a fresh one was put back on the table; do not repeat the exact same release.
 - interrupted: the operator stopped you; follow whatever they asked.

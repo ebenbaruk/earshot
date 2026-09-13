@@ -244,7 +244,8 @@ describe("prompt", () => {
   it("keeps the hidden quirks out of the base prompt", () => {
     const sys = buildPolicySystemPrompt(BASE_POLICY).toLowerCase();
     // squeeze / nudge are described tersely, with no hint of WHEN to use them
-    expect(sys).toContain("compress the held object");
+    expect(sys).toContain("clamp the fingers hard");
+    expect(sys).not.toContain("compress");
     expect(sys).toContain("small xy adjustment");
     expect(sys).not.toContain("2 cm to the left");
     expect(sys).not.toContain("marker last");
@@ -344,22 +345,22 @@ describe("fallback policy", () => {
     expect(obs.bag.contents.sort()).toEqual(["marker", "sponge", "tape_holder"]);
   });
 
-  it("widens the bag before releasing when the opening looks narrow", () => {
+  it("lowers the egg before releasing it (safety planner)", () => {
     const obs = fixtureObservation({
-      gripper: { pos: { ...BAG_POS }, z: 8, width: 7.5, holding: "tape_holder" },
+      gripper: { pos: { ...BAG_POS }, z: 16, width: 7.5, holding: "egg" },
       bag: { pos: BAG_POS, contents: ["marker"], openingLooksNarrow: true },
       stagesDone: 1,
     });
-    expect(fallbackDecision(obs).command).toEqual({ skill: "widen_bag" });
+    expect(fallbackDecision(obs).command).toEqual({ skill: "descend" });
   });
 
-  it("widens the bag after a blocked release", () => {
+  it("squeezes the sponge after a blocked release (safety planner)", () => {
     const obs = fixtureObservation({
       gripper: { pos: { ...BAG_POS }, z: 8, width: 7.5, holding: "sponge" },
       bag: { pos: BAG_POS, contents: ["marker"], openingLooksNarrow: false },
       lastSkill: { command: { skill: "release" }, outcome: "blocked" },
     });
-    expect(fallbackDecision(obs).command).toEqual({ skill: "widen_bag" });
+    expect(fallbackDecision(obs).command).toEqual({ skill: "squeeze" });
   });
 
   it("retries a failed grasp once, then backs off", () => {

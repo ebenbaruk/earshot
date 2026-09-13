@@ -34,7 +34,7 @@ import { requestDecisionWithMeta, requestDistill } from "@/lib/policy/client";
 import { fallbackDecision } from "@/lib/policy/fallback";
 import { extractOrderHint, parseCorrectionFast } from "@/lib/corrections/grammar";
 import { resolveOrderHint } from "@/lib/corrections/order";
-import { applyConstraints, emptyConstraints, learnFromCorrection, type RunConstraints } from "./constraints";
+import { applyConstraints, emptyConstraints, learnFromCorrection, retryAfterNudge, type RunConstraints } from "./constraints";
 import { isDithering } from "./watchdog";
 import { parseCorrection } from "@/lib/corrections/parse";
 import { findStopWord, normalizeCorrection } from "@/lib/voice/stopwords";
@@ -441,11 +441,14 @@ async function applyCorrection(input: CorrectionInput): Promise<void> {
   // Preventive correction while running: interrupt the current skill first.
   loopEpoch++;
   if (running) e.pause();
-  const outcome: SkillOutcome = await execute(command);
+  let outcome: SkillOutcome = await execute(command);
   // Said after the skill lands, so "Okay, a bit to the left." confirms a move
   // that actually happened.
   say(outcome === "ok" ? acknowledgement(command, orderHint) : "That didn't work.");
   if (outcome === "ok") learnFromCorrection(constraints, command, obsAtUtterance, orderHint);
+  // "A bit to the left" with the fingers down means "…and try again".
+  const retry = outcome === "ok" ? retryAfterNudge(command, obsAtUtterance) : null;
+  if (retry && !isTerminal(e.world.status)) outcome = await execute(retry);
   runs.updateCorrection(id, { outcome });
   session().set({ lastCorrection: { ...event, outcome } });
   // Never resume over a stop that landed while we were parsing.

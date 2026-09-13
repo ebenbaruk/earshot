@@ -65,15 +65,15 @@ export function fallbackDecision(obs: Observation): PolicyDecision {
         `carry the ${g.holding} to the bag`,
       );
     }
-    if (
-      obs.bag.openingLooksNarrow ||
-      (obs.lastSkill?.command.skill === "release" &&
-        obs.lastSkill.outcome === "blocked")
-    ) {
-      return decision(
-        { skill: "widen_bag" },
-        "the bag opening is too narrow to accept the item",
-      );
+    // The safety planner knows the tricks (it is only used to unstick the
+    // LLM policy, and every step it takes is badged as an override).
+    const blockedRelease =
+      obs.lastSkill?.command.skill === "release" && obs.lastSkill.outcome === "blocked";
+    if (g.holding === "sponge" && blockedRelease) {
+      return decision({ skill: "squeeze" }, "the sponge did not fit: squeeze it first");
+    }
+    if (g.holding === "egg" && g.z > 13) {
+      return decision({ skill: "descend" }, "lower the egg before releasing it");
     }
     return decision(
       { skill: "release" },

@@ -38,6 +38,15 @@ export function objectNear(obs: Observation, radius = 6): ObjectId | null {
   return best;
 }
 
+/**
+ * "A bit to the left" said with the fingers already down on an object means
+ * "…and try again": the skill layer retries the grasp right after the nudge.
+ */
+export function retryAfterNudge(command: SkillCommand, obsBefore: Observation): SkillCommand | null {
+  if (command.skill !== "nudge" || obsBefore.gripper.holding || obsBefore.gripper.z > 2) return null;
+  return objectNear(obsBefore, 6) ? { skill: "grasp" } : null;
+}
+
 /** Record what a just-executed correction teaches the skill layer for this run. */
 export function learnFromCorrection(
   c: RunConstraints,

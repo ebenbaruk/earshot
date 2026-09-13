@@ -22,7 +22,7 @@ import { fallbackDecision } from "../lib/policy/fallback";
 import { distill } from "../lib/policy/distill";
 import { extractOrderHint, parseCorrectionFast } from "../lib/corrections/grammar";
 import { resolveOrderHint } from "../lib/corrections/order";
-import { applyConstraints, emptyConstraints, learnFromCorrection } from "../lib/earshot/constraints";
+import { applyConstraints, emptyConstraints, learnFromCorrection, retryAfterNudge } from "../lib/earshot/constraints";
 import { isDithering } from "../lib/earshot/watchdog";
 import { describeCommand } from "../lib/policy/command-codec";
 
@@ -94,8 +94,10 @@ async function runOnce(seed: number, policy: PolicyVersion, operator: Operator, 
       let cmd = parseCorrectionFast(text);
       if (!cmd && hint) cmd = resolveOrderHint(hint, obs);
       if (cmd) {
-        const r = await runSkill(e, cmd);
+        let r = await runSkill(e, cmd);
         if (r.outcome === "ok") learnFromCorrection(constraints, cmd, obs, hint);
+        const retry = r.outcome === "ok" ? retryAfterNudge(cmd, obs) : null;
+        if (retry) r = await runSkill(e, retry);
         corrections.push({
           id: `c${corrections.length + 1}`, runId, ts: e.world.t, tStop: e.world.t, transcript: utter,
           parsedCommand: cmd, parseSource: "grammar", rejectedPolicyAction: inFlight,
