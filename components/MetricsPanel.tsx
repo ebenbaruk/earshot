@@ -22,6 +22,43 @@ function isSupervised(r: RunRecord): boolean {
 }
 
 /**
+ * Operator attention consumed by one correction: from the stop to the final
+ * transcript, plus a fixed allowance for watching the correction execute.
+ * Clamped so a stray value cannot dominate the total.
+ */
+function attentionMs(c: CorrectionEvent): number {
+  const listening = c.tStop != null ? Math.max(0, c.ts - c.tStop) : 0;
+  return Math.min(30_000, Math.max(3_000, listening + 2_500));
+}
+
+interface Load {
+  attentionMs: number;
+  /** share of the run the robot ran with nobody attending to it, 0..1 */
+  autonomy: number | null;
+  /** how many robots one operator could watch at this intervention rate */
+  robotsPerOperator: number | null;
+}
+
+function loadOf(r: RunRecord, byId: Map<string, CorrectionEvent>): Load {
+  const total = r.correctionIds.reduce((sum, id) => {
+    const c = byId.get(id);
+    return sum + (c ? attentionMs(c) : 0);
+  }, 0);
+  if (!r.durationMs || r.durationMs <= 0) return { attentionMs: total, autonomy: null, robotsPerOperator: null };
+  const share = Math.min(1, total / r.durationMs);
+  return {
+    attentionMs: total,
+    autonomy: 1 - share,
+    robotsPerOperator: share <= 0 ? Infinity : 1 / share,
+  };
+}
+
+const fmtSeconds = (ms: number) => `${Math.round(ms / 1000)} s`;
+const fmtPct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)} %`);
+const fmtRobots = (v: number | null) =>
+  v == null ? "—" : v === Infinity || v >= 20 ? "20+" : v.toFixed(1);
+
+/**
  * Series colours. Two categorical hues, validated against the panel surface
  * (#110f0e) for the OKLCH lightness band, chroma floor, CVD separation
  * (ΔE 8.0 protan) and 3:1 contrast. Identity is never colour-alone: every
@@ -172,7 +209,21 @@ export function MetricsPanel({
     const latestSupervised = supervised[supervised.length - 1];
     const latestAutonomous = last;
 
+    // Supervision cost: first supervised run vs the latest run of any kind.
+    const byId = new Map(corrections.map((c) => [c.id, c]));
+    const firstSupervised = supervised[0];
+    const latestRun = runs[runs.length - 1];
+    const loadFirst = firstSupervised ? loadOf(firstSupervised, byId) : null;
+    const loadLast = latestRun ? loadOf(latestRun, byId) : null;
+    const arrow = (a: string, b: string) => (a === b ? a : `${a} → ${b}`);
+
     return {
+      attention: loadFirst && loadLast ? arrow(fmtSeconds(loadFirst.attentionMs), fmtSeconds(loadLast.attentionMs)) : "—",
+      attentionHint: loadFirst && loadLast ? `per run, v${firstSupervised.policyVersion} → v${latestRun.policyVersion}` : "needs a supervised run",
+      autonomy: loadFirst && loadLast ? arrow(fmtPct(loadFirst.autonomy), fmtPct(loadLast.autonomy)) : "—",
+      autonomyHint: "share of the run with nobody attending",
+      robots: loadFirst && loadLast ? arrow(fmtRobots(loadFirst.robotsPerOperator), fmtRobots(loadLast.robotsPerOperator)) : "—",
+      robotsHint: "robots one operator can watch at this rate",
       interventionTrail: interventions.length ? interventions.join(" → ") : "—",
       stagesDelta:
         first && last
@@ -225,6 +276,20 @@ export function MetricsPanel({
           hint={summary.avgStopHint}
         />
       </div>
+
+      {/* supervision cost — the business reading of the same numbers */}
+      <div className="mb-1.5 label">supervision cost</div>
+      <div className="mb-2 grid grid-cols-2 gap-2 xl:grid-cols-3">
+        <Stat label="operator attention" value={summary.attention} hint={summary.attentionHint} />
+        <Stat label="autonomy" value={summary.autonomy} hint={summary.autonomyHint} />
+        <Stat label="robots per operator" value={summary.robots} hint={summary.robotsHint} />
+      </div>
+      <p className="mb-5 max-w-[52ch] text-[12px] leading-relaxed text-muted">
+        Every autonomous fleet keeps humans on standby for the moments the policy
+        can&apos;t handle. Attention is what they cost; autonomy is what the
+        distilled policy gives back. When attention reaches zero, the same
+        operator is free to watch the next robot.
+      </p>
 
       {/* improvement across iterations */}
       <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
