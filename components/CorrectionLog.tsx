@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import { Fragment, useState } from "react";
 import type { CorrectionEvent, ParseSource, WorldState } from "@/lib/types";
-import { Button, Chip, EmptyState } from "./primitives";
+import { Button, Chip } from "./primitives";
 import {
   OUTCOME_LABEL,
   formatLatency,
@@ -170,8 +170,10 @@ export function CorrectionLog({
   onSendText,
   distilling = false,
   pendingIds,
+  canSend = true,
 }: {
   corrections: CorrectionEvent[];
+  canSend?: boolean;
   onSendText: (text: string) => void;
   /** True while /api/distill is in flight. */
   distilling?: boolean;
@@ -183,7 +185,7 @@ export function CorrectionLog({
 
   const submit = () => {
     const t = draft.trim();
-    if (!t) return;
+    if (!t || !canSend) return;
     onSendText(t);
     setDraft("");
   };
@@ -192,12 +194,14 @@ export function CorrectionLog({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {items.length === 0 ? (
-          <EmptyState title="No corrections yet">
-            Every time you interrupt the agent, Earshot records what you said,
-            what the policy was about to do, and the two seconds of state before
-            it. That record is the training signal — distil it into a new policy
-            version when you have a few.
-          </EmptyState>
+          <div className="correction-welcome">
+            <div className="listening-art" aria-hidden>{[12, 23, 34, 18, 46, 30, 56, 36, 20, 42, 25, 12].map((h, i) => <span key={i} style={{ height: h }} />)}</div>
+            <h3>Every “wait” is a lesson.</h3>
+            <p>Start a run, then guide the robot with your voice or a message below. Your corrections appear here.</p>
+            <div className="suggested-label">TRY A CORRECTION</div>
+            <div className="suggested-phrases">{["Stop", "Move left 2 cm", "Lower slowly"].map(phrase => <button type="button" key={phrase} onClick={() => setDraft(phrase)}>“{phrase}” <span>↗</span></button>)}</div>
+            <div className="learning-note"><span>↳</span><p>When you’re ready, <strong>Learn from corrections</strong> saves your guidance into the next policy.</p></div>
+          </div>
         ) : (
           <ol className="flex flex-col">
             {items.map((c, i) => (
@@ -218,7 +222,8 @@ export function CorrectionLog({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-line p-2.5">
+      <div className="correction-composer shrink-0 border-t border-line p-4">
+        <div className="composer-caption">YOUR NEXT CORRECTION <span>{canSend ? "↵ to send" : "Start a run first"}</span></div>
         <div className="flex items-center gap-2">
           <input
             value={draft}
@@ -228,9 +233,9 @@ export function CorrectionLog({
             }}
             placeholder="Type a correction…"
             aria-label="Type a correction"
-            className="h-8 min-w-0 flex-1 rounded-md border border-line bg-input px-2.5 font-mono text-[12.5px] text-ink placeholder:text-faint focus:border-accent/60 focus:outline-none"
+            className="h-11 min-w-0 flex-1 rounded-md border border-line bg-input px-2.5 font-mono text-[12.5px] text-ink placeholder:text-faint focus:border-accent/60 focus:outline-none"
           />
-          <Button variant="primary" onClick={submit} disabled={!draft.trim()}>
+          <Button variant="primary" onClick={submit} disabled={!draft.trim() || !canSend}>
             Send
           </Button>
         </div>

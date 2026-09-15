@@ -58,16 +58,11 @@ const fmtPct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)
 const fmtRobots = (v: number | null) =>
   v == null ? "—" : v === Infinity || v >= 20 ? "20+" : v.toFixed(1);
 
-/**
- * Series colours. Two categorical hues, validated against the panel surface
- * (#110f0e) for the OKLCH lightness band, chroma floor, CVD separation
- * (ΔE 8.0 protan) and 3:1 contrast. Identity is never colour-alone: every
- * series carries a legend swatch AND its text label.
- */
-const SUPERVISED = "#db7724"; // amber — runs with voice corrections enabled
-const AUTONOMOUS = "#30a268"; // green — ablation runs, no human in the loop
-const GRID = "rgba(255,255,255,0.07)";
-const AXIS = "#6a645d";
+/** Distinct series colours on charcoal; each series also has a text label. */
+const SUPERVISED = "#acc6f2"; // ice blue — runs with voice corrections enabled
+const AUTONOMOUS = "#8ac9a8"; // green — ablation runs, no human in the loop
+const GRID = "rgba(255,255,255,0.08)";
+const AXIS = "#848997";
 
 const STAGE_TICKS = Array.from({ length: OBJECT_COUNT + 1 }, (_, i) => i);
 
@@ -138,7 +133,7 @@ function ChartTip({
   const rows = payload.filter((p) => p.value != null);
   if (!rows.length) return null;
   return (
-    <div className="rounded-md border border-line bg-raised px-2.5 py-2 shadow-xl shadow-black/60">
+    <div className="rounded-md border border-line bg-raised px-2.5 py-2 shadow-xl shadow-black/10">
       <div className="label mb-1.5">run {label}</div>
       {rows.map((p) => (
         <div
@@ -350,7 +345,7 @@ export function MetricsPanel({
               name="with corrections"
               stroke={SUPERVISED}
               strokeWidth={2}
-              dot={{ r: 4, fill: SUPERVISED, stroke: "#110f0e", strokeWidth: 2 }}
+              dot={{ r: 4, fill: SUPERVISED, stroke: "#111216", strokeWidth: 2 }}
               activeDot={{ r: 5 }}
               connectNulls
               isAnimationActive={false}
@@ -361,7 +356,7 @@ export function MetricsPanel({
               name="autonomous"
               stroke={AUTONOMOUS}
               strokeWidth={2}
-              dot={{ r: 4, fill: AUTONOMOUS, stroke: "#110f0e", strokeWidth: 2 }}
+              dot={{ r: 4, fill: AUTONOMOUS, stroke: "#111216", strokeWidth: 2 }}
               activeDot={{ r: 5 }}
               connectNulls
               isAnimationActive={false}

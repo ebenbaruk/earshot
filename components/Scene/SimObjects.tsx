@@ -394,7 +394,7 @@ function ObjectView({ id, children, scaleX = 1, scaleY = 1, scaleZ = 1 }: Object
       const far = dist(w.gripper.pos, o.pos);
       const interesting = o.state !== "on_table" || now < mo.alertUntil;
       const near = interesting ? 1 : clamp01(1 - (far - 9) / 17);
-      wrap.current.style.opacity = String(0.3 + near * 0.7);
+      wrap.current.style.opacity = String(0.78 + near * 0.22);
     }
     if (badge.current) {
       const alert = now < mo.alertUntil;

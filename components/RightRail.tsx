@@ -50,12 +50,14 @@ export function RightRail({
   ];
 
   return (
-    <aside className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-panel">
+    <aside className="learning-panel flex min-h-0 flex-col overflow-hidden">
+      <div className="learning-heading"><span className="section-kicker">THE HUMAN PART</span><h3>Your instinct. <br />Its next lesson.</h3></div>
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
 
       {tab === "corrections" ? (
         <CorrectionLog
           corrections={vm.corrections}
+          canSend={vm.status === "running" || vm.status === "paused"}
           onSendText={actions.sendTextCorrection}
           distilling={vm.distilling}
           pendingIds={pendingIds}

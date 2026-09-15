@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 export interface TabDef<K extends string = string> {
   key: K;
@@ -21,6 +21,7 @@ export function Tabs<K extends string>({
   onChange: (key: K) => void;
   className?: string;
 }) {
+  const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   return (
     <div
       role="tablist"
@@ -30,14 +31,24 @@ export function Tabs<K extends string>({
         className,
       )}
     >
-      {tabs.map((t) => {
+      {tabs.map((t, index) => {
         const active = t.key === value;
         return (
           <button
             key={t.key}
             role="tab"
             type="button"
+            ref={(el) => { buttons.current[index] = el; }}
+            tabIndex={active ? 0 : -1}
             aria-selected={active}
+            onKeyDown={(event) => {
+              const key = event.key;
+              if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) return;
+              event.preventDefault();
+              const next = key === "Home" ? 0 : key === "End" ? tabs.length - 1 : (index + (key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+              onChange(tabs[next].key);
+              buttons.current[next]?.focus();
+            }}
             onClick={() => onChange(t.key)}
             className={clsx(
               "relative -mb-px flex shrink-0 items-center gap-1.5 border-b px-2 py-2.5 text-[11.5px] tracking-[0.08em] uppercase",

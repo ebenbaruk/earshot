@@ -12,8 +12,8 @@ import type { SceneProps } from "./index";
 export const SceneNoSSR = dynamic<SceneProps>(() => import("./index").then((m) => m.Scene), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full min-h-[360px] items-center justify-center rounded-lg bg-[#080a10] text-sm text-zinc-500">
-      loading scene…
+    <div className="flex h-full w-full min-h-0 items-center justify-center bg-[#0c1018] font-mono text-xs tracking-widest text-[#b3c2dc]">
+      Preparing the workspace…
     </div>
   ),
 });

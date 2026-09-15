@@ -1,108 +1,42 @@
 "use client";
 
-import { useMemo } from "react";
-import { AdditiveBlending, DoubleSide, RepeatWrapping } from "three";
+import { RoundedBox } from "@react-three/drei";
 import { TABLE } from "@/lib/sim/constants";
-import { glowTexture, woodTextures } from "./textures";
 
 const THICKNESS = 2.2;
 const FLOOR_Y = -16;
-const LEG_INSET = 3.5;
-const LEGS: ReadonlyArray<readonly [number, number]> = [
-  [-(TABLE.w / 2 - LEG_INSET), -(TABLE.d / 2 - LEG_INSET)],
-  [TABLE.w / 2 - LEG_INSET, -(TABLE.d / 2 - LEG_INSET)],
-  [-(TABLE.w / 2 - LEG_INSET), TABLE.d / 2 - LEG_INSET],
-  [TABLE.w / 2 - LEG_INSET, TABLE.d / 2 - LEG_INSET],
-];
+const LEGS = [-1, 1].flatMap(x => [-1, 1].map(z => [x * (TABLE.w / 2 - 3.5), z * (TABLE.d / 2 - 3.5)]));
 
-/** Warm matte work surface (60 x 40 cm) on a dark studio floor, lit by a soft pool. */
+/** Visual workbench only. The top remains at y=0 with the simulation's dimensions. */
 export function Table() {
-  const wood = useMemo(() => {
-    const { map, roughnessMap } = woodTextures();
-    map.repeat.set(1, 0.8);
-    map.wrapS = RepeatWrapping;
-    map.wrapT = RepeatWrapping;
-    roughnessMap.repeat.copy(map.repeat);
-    return { map, roughnessMap };
-  }, []);
-
-  const glow = useMemo(() => glowTexture(), []);
-
-  return (
-    <group>
-      {/* work surface */}
-      <mesh position={[0, -THICKNESS / 2, 0]} receiveShadow castShadow>
-        <boxGeometry args={[TABLE.w, THICKNESS, TABLE.d]} />
-        <meshStandardMaterial
-          map={wood.map}
-          roughnessMap={wood.roughnessMap}
-          color="#e8d6bd"
-          roughness={0.78}
-          metalness={0.02}
-          envMapIntensity={0.35}
-        />
+  return <group>
+    <RoundedBox args={[TABLE.w, THICKNESS, TABLE.d]} radius={0.5} smoothness={3} position={[0, -THICKNESS / 2, 0]} receiveShadow castShadow>
+      <meshStandardMaterial color="#9da6b4" roughness={0.65} metalness={0.22} />
+    </RoundedBox>
+    <RoundedBox args={[TABLE.w + 1, 0.8, TABLE.d + 1]} radius={0.25} smoothness={2} position={[0, -THICKNESS - 0.4, 0]} receiveShadow castShadow>
+      <meshStandardMaterial color="#242d3c" roughness={0.4} metalness={0.7} />
+    </RoundedBox>
+    {/* Etched reference grid, flush with the work surface. */}
+    {Array.from({ length: 11 }, (_, i) => (i - 5) * 5).map(x => <mesh key={`x${x}`} position={[x, 0.013, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[0.025, TABLE.d - 3]} /><meshStandardMaterial color="#5c6d85" roughness={0.8} transparent opacity={0.35} />
+    </mesh>)}
+    {Array.from({ length: 7 }, (_, i) => (i - 3) * 5).map(z => <mesh key={`z${z}`} position={[0, 0.014, z]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[TABLE.w - 3, 0.025]} /><meshStandardMaterial color="#5c6d85" roughness={0.8} transparent opacity={0.35} />
+    </mesh>)}
+    {/* Calibration ticks along the front edge. */}
+    {Array.from({ length: 29 }, (_, i) => i - 14).map(i => <mesh key={`tick${i}`} position={[i * 2, 0.025, TABLE.d / 2 - 1.2]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[0.07, i % 5 === 0 ? 0.7 : 0.3]} /><meshStandardMaterial color="#576880" roughness={0.7} />
+    </mesh>)}
+    {LEGS.map(([x, z]) => <group key={`${x}:${z}`}>
+      <mesh position={[x, 0.035, z]} receiveShadow>
+        <cylinderGeometry args={[0.4, 0.4, 0.12, 24]} /><meshStandardMaterial color="#d4dce8" roughness={0.24} metalness={0.95} />
       </mesh>
-
-      {/* dark edge band so the top reads as a slab, not a decal */}
-      <mesh position={[0, -THICKNESS - 0.35, 0]} receiveShadow>
-        <boxGeometry args={[TABLE.w + 1.0, 0.7, TABLE.d + 1.0]} />
-        <meshStandardMaterial color="#4b392a" roughness={0.9} metalness={0.05} />
-      </mesh>
-
-      {/* light pool on the surface: keeps the shot from going flat */}
-      <mesh position={[-2, 0.035, 1]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={-1}>
-        <planeGeometry args={[74, 54]} />
-        <meshBasicMaterial
-          map={glow}
-          color="#ffe2b8"
-          transparent
-          opacity={0.2}
-          blending={AdditiveBlending}
-          depthWrite={false}
-          side={DoubleSide}
-        />
-      </mesh>
-
-      {/* countersunk screws at the corners of the work surface */}
-      {LEGS.map(([x, z]) => (
-        <group key={`screw:${x}:${z}`} position={[x * 0.92, 0.01, z * 0.86]}>
-          <mesh castShadow>
-            <cylinderGeometry args={[0.46, 0.5, 0.16, 16]} />
-            <meshStandardMaterial color="#8c8577" roughness={0.34} metalness={0.85} />
-          </mesh>
-          <mesh position={[0, 0.09, 0]} rotation={[0, 0.6, 0]}>
-            <boxGeometry args={[0.72, 0.06, 0.14]} />
-            <meshStandardMaterial color="#4a4438" roughness={0.5} metalness={0.6} />
-          </mesh>
-        </group>
-      ))}
-
-      {/* legs */}
-      {LEGS.map(([x, z]) => (
-        <mesh key={`${x}:${z}`} position={[x, (FLOOR_Y - THICKNESS - 0.7) / 2, z]} castShadow>
-          <boxGeometry args={[2, FLOOR_Y * -1 - THICKNESS - 0.7, 2]} />
-          <meshStandardMaterial color="#3a2c20" roughness={0.85} metalness={0.05} />
-        </mesh>
-      ))}
-
-      {/* studio floor */}
-      <mesh position={[0, FLOOR_Y, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[520, 520]} />
-        <meshStandardMaterial color="#0a0c12" roughness={0.95} metalness={0.05} />
-      </mesh>
-
-      {/* floor bounce under the table, so the slab doesn't float in a void */}
-      <mesh position={[0, FLOOR_Y + 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[190, 150]} />
-        <meshBasicMaterial
-          map={glow}
-          color="#2b3450"
-          transparent
-          opacity={0.5}
-          blending={AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
-    </group>
-  );
+      <mesh position={[x, 0.1, z]}><cylinderGeometry args={[0.17, 0.17, 0.02, 6]} /><meshStandardMaterial color="#43516a" metalness={0.7} roughness={0.4} /></mesh>
+      <mesh position={[x, (FLOOR_Y - THICKNESS - 0.8) / 2, z]} castShadow><boxGeometry args={[2, -FLOOR_Y - THICKNESS - 0.8, 2]} /><meshStandardMaterial color="#657489" roughness={0.36} metalness={0.75} /></mesh>
+      <mesh position={[x, FLOOR_Y + 0.6, z]} castShadow><cylinderGeometry args={[1.6, 1.8, 1.2, 24]} /><meshStandardMaterial color="#151c27" roughness={0.9} /></mesh>
+    </group>)}
+    <mesh position={[0, FLOOR_Y, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <planeGeometry args={[520, 520]} /><meshStandardMaterial color="#11151e" roughness={0.85} metalness={0.12} />
+    </mesh>
+  </group>;
 }

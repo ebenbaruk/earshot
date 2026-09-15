@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { OBJECT_COUNT, type SimStatus } from "@/lib/types";
 import type { EarshotActions, EarshotViewModel } from "./view-model";
-import { Chip, ThinkingDots } from "./primitives";
+import { Chip } from "./primitives";
 import { formatElapsed, formatSkill, markHalt } from "./format";
 
 /** The legend under "What can I say?" — the validated demo phrases. */
@@ -18,10 +18,10 @@ export const EXAMPLE_PHRASES: readonly { text: string; hint?: string }[] = [
 ];
 
 const STATUS_LABEL: Record<SimStatus, string> = {
-  idle: "idle",
-  running: "running",
+  idle: "ready",
+  running: "working",
   paused: "paused",
-  succeeded: "succeeded",
+  succeeded: "complete",
   failed: "failed",
 };
 
@@ -173,27 +173,12 @@ function RunStatus({ vm }: { vm: EarshotViewModel }) {
 
 /* -------------------------------------------------------------------------- */
 
-function PolicyLine({ vm }: { vm: EarshotViewModel }) {
+export function PolicyLine({ vm }: { vm: EarshotViewModel }) {
   return (
-    <div className="pointer-events-auto w-[min(30rem,100%)] rounded-md border border-line bg-bg/80 px-3 py-2.5 backdrop-blur">
-      <div className="mb-1.5 flex items-center gap-2">
-        <span className="label">policy</span>
-        <span className="font-mono text-[10px] text-faint">
-          v{vm.currentVersion}
-        </span>
-        {vm.policyThinking ? (
-          <span className="flex items-center gap-1.5 text-[11px] text-accent">
-            <ThinkingDots />
-            thinking
-          </span>
-        ) : null}
-      </div>
-      <div className="font-mono text-[14px] leading-5 break-words text-ink">
-        {formatSkill(vm.decision?.command)}
-      </div>
-      <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-        {vm.decision?.reasoning ?? "Waiting for the first decision."}
-      </p>
+    <div className="decision-strip" aria-live="polite">
+      <div><span className="label">Next move</span><span className="decision-command">{formatSkill(vm.decision?.command)}</span></div>
+      <p>{vm.policyThinking ? "Planning the next move…" : vm.decision?.reasoning ?? "Start a run to watch the robot plan its next move."}</p>
+      <span className="decision-version">v{vm.currentVersion}</span>
     </div>
   );
 }
@@ -273,13 +258,7 @@ function VoiceBar({
     );
   }
 
-  if (vm.voice === "off") {
-    return (
-      <div className="rounded-md border border-line bg-bg/70 px-3 py-1.5 text-[12px] text-faint backdrop-blur">
-        mic off — turn it on to correct the agent
-      </div>
-    );
-  }
+  if (vm.voice === "off") return null;
 
   const listening = vm.voice === "listening";
   return (
@@ -455,9 +434,6 @@ export function Hud({
 
         <div className="flex flex-col items-center gap-3">
           <Transcript vm={vm} actions={actions} />
-          <div className="flex w-full items-end justify-start">
-            <PolicyLine vm={vm} />
-          </div>
         </div>
       </div>
     </>

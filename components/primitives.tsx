@@ -33,7 +33,7 @@ export function Button({
         "disabled:cursor-not-allowed disabled:opacity-40",
         size === "sm" ? "h-7 px-2.5 text-[12px]" : "h-8 px-3 text-[13px]",
         variant === "primary" &&
-          "border border-accent/60 bg-accent/15 text-accent hover:enabled:border-accent hover:enabled:bg-accent/25",
+          "border border-accent bg-accent text-bg hover:enabled:bg-accent/90 hover:enabled:border-accent/90",
         variant === "ghost" &&
           "border border-line bg-raised text-ink hover:enabled:border-line-strong hover:enabled:bg-input",
         variant === "quiet" &&

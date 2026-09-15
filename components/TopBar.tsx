@@ -7,38 +7,6 @@ import { Button, Spinner, ThinkingDots, Toggle } from "./primitives";
 
 /* -------------------------------------------------------------------------- */
 
-function Wordmark() {
-  return (
-    <div className="flex shrink-0 items-center gap-2">
-      <svg
-        viewBox="0 0 20 20"
-        aria-hidden
-        className="h-[18px] w-[18px] text-accent"
-      >
-        <path
-          d="M10 3.4a2.6 2.6 0 0 0-2.6 2.6v2.2a2.6 2.6 0 0 0 5.2 0V6A2.6 2.6 0 0 0 10 3.4Z"
-          fill="currentColor"
-        />
-        <path
-          d="M5.9 8.2v.4a4.1 4.1 0 0 0 8.2 0v-.4M10 12.7v3.1"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          fill="none"
-        />
-      </svg>
-      <span className="text-[15px] font-semibold tracking-[-0.03em] text-ink">
-        EARSHOT
-      </span>
-      <span className="hidden text-[12px] text-faint xl:inline">
-        yell at your agent
-      </span>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-
 function MicButton({
   status,
   error,
@@ -53,7 +21,7 @@ function MicButton({
   const on = status === "listening";
   const label =
     status === "off"
-      ? "mic off"
+      ? "Enable mic"
       : status === "connecting"
         ? "connecting"
         : status === "error"
@@ -129,7 +97,7 @@ function VersionPill({
       {open ? (
         <div
           role="listbox"
-          className="rise absolute top-9 left-0 z-30 min-w-[220px] rounded-md border border-line bg-raised p-1 shadow-2xl shadow-black/60"
+          className="rise absolute top-9 left-0 z-30 min-w-[220px] rounded-md border border-line bg-raised p-1 shadow-2xl shadow-black/10"
         >
           {[...vm.policies].reverse().map((p) => (
             <button
@@ -210,7 +178,7 @@ function OverflowMenu({
       {open ? (
         <div
           role="menu"
-          className="rise absolute top-9 right-0 z-30 min-w-[200px] rounded-md border border-line bg-raised p-1 shadow-2xl shadow-black/60"
+          className="rise absolute top-9 right-0 z-30 min-w-[200px] rounded-md border border-line bg-raised p-1 shadow-2xl shadow-black/10"
         >
           <button
             type="button"
@@ -293,16 +261,13 @@ export function TopBar({
   const nextVersion = vm.currentVersion + 1;
 
   return (
-    <header className="sticky top-0 z-20 shrink-0 border-b border-line bg-bg/90 backdrop-blur">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 md:flex-nowrap">
-        <Wordmark />
-
-        <div className="hidden h-5 w-px shrink-0 bg-line md:block" />
+    <header className="topbar relative z-20 shrink-0 border-b border-line">
+      <div className="topbar-inner flex flex-wrap items-center gap-x-3 gap-y-2">
 
         {/* run controls */}
         <div className="flex shrink-0 items-center gap-1.5">
           <Button
-            variant="ghost"
+            variant="primary"
             onClick={running ? actions.pause : actions.run}
             title={running ? "Pause the run" : "Start the run"}
           >
@@ -319,7 +284,7 @@ export function TopBar({
                 <svg viewBox="0 0 10 10" className="h-2.5 w-2.5" aria-hidden>
                   <path d="M2 1l7 4-7 4z" fill="currentColor" />
                 </svg>
-                Run
+                Start run
               </>
             )}
           </Button>
@@ -362,12 +327,12 @@ export function TopBar({
           {vm.distilling ? (
             <>
               <Spinner />
-              Distilling
+              Learning
               <ThinkingDots className="ml-0.5" />
             </>
           ) : (
             <>
-              Distill{pending > 0 ? ` ${pending}` : ""} correction
+              Learn{pending > 0 ? ` from ${pending}` : " from"} correction
               {pending === 1 ? "" : "s"} → v{nextVersion}
             </>
           )}
@@ -381,7 +346,7 @@ export function TopBar({
           <Toggle
             checked={vm.correctionsEnabled}
             onChange={actions.setCorrectionsEnabled}
-            label={vm.correctionsEnabled ? "corrections on" : "corrections off"}
+            label={vm.correctionsEnabled ? "Guidance on" : "Guidance off"}
             title="Ablation — turn voice corrections off to measure the autonomous policy"
           />
           <MicButton

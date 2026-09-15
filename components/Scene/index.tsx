@@ -11,7 +11,7 @@ import { Table } from "./Table";
 import { Bag } from "./Bag";
 import { SimObjects } from "./SimObjects";
 import { Gripper } from "./Gripper";
-import { DustMotes, GhostTrail } from "./Effects";
+import { GhostTrail } from "./Effects";
 import { AlignmentGizmo } from "./Debug";
 
 /** Fixed three-quarter framing. Distance/height tuned to hold the table, bag and gantry. */
@@ -26,9 +26,9 @@ const PUSH_RATE = 1.05;
 
 /** Styles for the drei <Html> labels. Scoped here so the Scene owns its own CSS. */
 const LABEL_CSS = `
-.scene-label{display:flex;align-items:center;gap:5px;white-space:nowrap;font:600 11px/1.15 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#e9eefb;background:rgba(10,13,19,.66);border:1px solid rgba(150,175,255,.22);border-radius:999px;padding:3px 9px;letter-spacing:.012em;backdrop-filter:blur(7px);box-shadow:0 2px 12px rgba(0,0,0,.5);user-select:none;pointer-events:none;transition:opacity .18s ease}
-.scene-label-dim{font-weight:500;color:#9fb0d0}
-.scene-badge{font:600 9.5px/1.25 ui-sans-serif,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#bcd0ff;background:rgba(96,132,255,.2);border:1px solid rgba(130,164,255,.4);border-radius:999px;padding:1px 6px}
+.scene-label{display:flex;align-items:center;gap:5px;white-space:nowrap;font:600 11px/1.15 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#e8eef9;background:rgba(13,19,30,.9);border:1px solid rgba(177,200,239,.24);border-radius:4px;padding:3px 9px;letter-spacing:.012em;backdrop-filter:blur(7px);box-shadow:0 2px 8px rgba(0,0,0,.12);user-select:none;pointer-events:none;transition:opacity .18s ease}
+.scene-label-dim{font-weight:500;color:#b3c2dc}
+.scene-badge{font:600 9.5px/1.25 ui-sans-serif,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#d6e5ff;background:rgba(120,158,220,.2);border:1px solid rgba(158,190,240,.4);border-radius:999px;padding:1px 6px}
 .scene-badge-alert{color:#fff;background:rgba(214,42,42,.92);border-color:rgba(255,150,150,.65);box-shadow:0 0 12px rgba(255,60,60,.5)}
 @keyframes scene-stop-flash{0%{opacity:.7}22%{opacity:.45}100%{opacity:0}}
 .scene-stopflash{position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 42%,#fff 0%,#ffd9a8 38%,rgba(255,190,120,0) 72%);mix-blend-mode:screen;opacity:0;animation:scene-stop-flash .42s ease-out forwards;pointer-events:none}
@@ -52,7 +52,7 @@ function CameraRig({ drift }: { drift: boolean }) {
     const aspect = size.width / Math.max(1, size.height);
     // Squarer viewports need a wider lens to keep the gantry and bag in shot.
     const fov =
-      aspect >= 1.7 ? 31 : aspect >= 1.4 ? 34 : aspect >= 1.15 ? 37 : aspect >= 1.0 ? 40 : 48;
+      aspect >= 1.7 ? 31 : aspect >= 1.4 ? 34 : aspect >= 1.15 ? 37 : aspect >= 1.0 ? 44 : Math.min(85, (2 * Math.atan(Math.tan(27 * Math.PI / 180) / aspect) * 180) / Math.PI);
     if ("fov" in camera) {
       // eslint-disable-next-line react-hooks/immutability -- three.js camera is a mutable object by design
       (camera as { fov: number }).fov = fov;
@@ -112,16 +112,16 @@ export function Scene({ className, orbit = false, debug = false }: SceneProps) {
   );
 
   return (
-    <div className={clsx("relative h-full w-full min-h-[360px] overflow-hidden", className)}>
+    <div className={clsx("relative h-full w-full min-h-0 overflow-hidden", className)}>
       <style>{LABEL_CSS}</style>
       <Canvas
         shadows
         dpr={[1, 2]}
-        gl={{ antialias: true, toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.18 }}
+        gl={{ antialias: true, toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.08 }}
         camera={{ position: CAM_POS, fov: 31, near: 0.5, far: 600 }}
       >
-        <color attach="background" args={["#070910"]} />
-        <fog attach="fog" args={["#070910", 165, 360]} />
+        <color attach="background" args={["#0c1018"]} />
+        <fog attach="fog" args={["#0c1018", 165, 360]} />
         <CameraRig drift={!orbit} />
         <Lights />
         <Suspense fallback={null}>
@@ -130,7 +130,6 @@ export function Scene({ className, orbit = false, debug = false }: SceneProps) {
           <SimObjects />
           <Gripper />
           <GhostTrail />
-          <DustMotes />
           {debug ? <AlignmentGizmo /> : null}
           {/* Contact shadows glue everything to the table top.
               The capture camera starts at y = 0.14 so the decorative glow planes
@@ -146,7 +145,7 @@ export function Scene({ className, orbit = false, debug = false }: SceneProps) {
             color="#1a1206"
           />
         </Suspense>
-        {orbit ? <OrbitControls target={LOOK_AT} makeDefault /> : null}
+        {orbit ? <OrbitControls target={LOOK_AT} minDistance={55} maxDistance={180} maxPolarAngle={Math.PI * 0.48} makeDefault /> : null}
       </Canvas>
 
       {/* the world drains of colour the moment the operator says stop */}
@@ -167,7 +166,7 @@ export function Scene({ className, orbit = false, debug = false }: SceneProps) {
             ? "inset 0 0 120px 24px rgba(220,38,38,.42), inset 0 0 320px 90px rgba(0,0,0,.55)"
             : won
               ? "inset 0 0 130px 30px rgba(46,240,160,.2), inset 0 0 320px 90px rgba(0,0,0,.5)"
-              : "inset 0 0 170px 46px rgba(0,0,0,.58)",
+              : "inset 0 0 100px 20px rgba(3,8,20,.28)",
         }}
       />
 

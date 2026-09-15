@@ -54,6 +54,10 @@ Scripts: `pnpm test` (vitest), `pnpm typecheck`, `pnpm dry-run` (headless run of
 | `app/api/*` | token minting, policy, correction, distill route handlers (server-side key) |
 | `docs/` | contracts, pitch copy, demo storyboard |
 
+## Design reference
+
+[Brand & Design System](docs/DESIGN_SYSTEM.md) documents the visual direction, exact tokens, typography, components, motion, responsive rules, and the boundary between rendering and physics. It includes a reusable brief for another AI to recreate the same design language.
+
 ## Next steps
 
 Real-robot bridge (the skill interface maps 1:1 to a ROS action server), multi-operator sessions, and swapping prompt-level distillation for actual fine-tuning of a small policy model on the same log.

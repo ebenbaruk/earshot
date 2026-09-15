@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
+import { RoundedBox } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { AdditiveBlending, Color, DoubleSide, MeshStandardMaterial } from "three";
 import type { Group, Mesh, MeshBasicMaterial } from "three";
@@ -61,7 +62,7 @@ export function Gripper() {
   const padMat = useMemo(
     () =>
       new MeshStandardMaterial({
-        color: "#ff8a4c",
+        color: "#c9a65b",
         emissive: new Color("#5e2409"),
         emissiveIntensity: 0.25,
         roughness: 0.42,
@@ -169,6 +170,7 @@ export function Gripper() {
             <boxGeometry args={[1.3, 1.3, RAIL_LEN]} />
             <meshStandardMaterial color="#7a8496" roughness={0.34} metalness={0.85} />
           </mesh>
+          <mesh position={[x, RAIL_Y + 0.68, 0]}><boxGeometry args={[0.35, 0.08, RAIL_LEN - 1]} /><meshStandardMaterial color="#28354a" metalness={0.8} roughness={0.3} /></mesh>
           {/* end caps, so the rails read as machined stock and not as cut lines */}
           {[RAIL_LEN / 2, -RAIL_LEN / 2].map((z) => (
             <mesh key={z} position={[x, RAIL_Y, z]} castShadow>
@@ -188,7 +190,7 @@ export function Gripper() {
         <group key={`${x}:${z}`}>
           <mesh position={[x, (RAIL_Y + FLOOR_Y) / 2, z]} castShadow>
             <boxGeometry args={[1.3, RAIL_Y - FLOOR_Y, 1.3]} />
-            <meshStandardMaterial color="#333b47" roughness={0.5} metalness={0.7} />
+            <meshStandardMaterial color="#aebace" roughness={0.5} metalness={0.7} />
           </mesh>
           <mesh position={[x, FLOOR_Y + 0.5, z]} receiveShadow>
             <boxGeometry args={[3.2, 0.8, 3.2]} />
@@ -198,7 +200,7 @@ export function Gripper() {
           <mesh position={[x, FLOOR_Y + 1.05, z]}>
             <boxGeometry args={[3.26, 0.26, 3.26]} />
             <meshStandardMaterial
-              color="#d8a319"
+              color="#729ad1"
               emissive="#3a2a02"
               emissiveIntensity={0.4}
               roughness={0.55}
@@ -213,7 +215,7 @@ export function Gripper() {
       <group ref={bridge}>
         <mesh position={[0, RAIL_Y, 0]} castShadow>
           <boxGeometry args={[RAIL_X * 2 + 1.4, 1.5, 2.0]} />
-          <meshStandardMaterial color="#9aa4b6" roughness={0.3} metalness={0.85} />
+          <meshStandardMaterial color="#d2dbe9" roughness={0.3} metalness={0.85} />
         </mesh>
 
         {/* cable chain: follows the carriage along the bridge */}
@@ -237,10 +239,12 @@ export function Gripper() {
 
         {/* trolley rides along x */}
         <group ref={trolley}>
-          <mesh position={[0, RAIL_Y, 0]} castShadow>
-            <boxGeometry args={[4.4, 3.0, 4.4]} />
-            <meshStandardMaterial color="#c3ccdb" roughness={0.24} metalness={0.8} />
-          </mesh>
+          <RoundedBox position={[0, RAIL_Y, 0]} args={[4.4, 3.0, 4.4]} radius={0.35} smoothness={3} castShadow>
+            <meshStandardMaterial color="#e0e6f0" roughness={0.3} metalness={0.45} />
+          </RoundedBox>
+          {[-1, 1].map(side => <mesh key={side} position={[side * 1.5, RAIL_Y, 2.23]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.18, 0.18, 0.1, 6]} /><meshStandardMaterial color="#3b485d" roughness={0.3} metalness={0.9} />
+          </mesh>)}
           <mesh position={[0, RAIL_Y - 1.65, 0]} castShadow>
             <boxGeometry args={[3.2, 0.45, 3.2]} />
             <meshStandardMaterial color="#39414f" roughness={0.5} metalness={0.6} />
@@ -260,10 +264,12 @@ export function Gripper() {
           {/* the hand — origin sits at the finger TIPS */}
           <group ref={head} position={[0, 16, 0]}>
             {/* wrist block, directly above the fingers */}
-            <mesh position={[0, FINGER_H + HEAD_H / 2, 0]} castShadow>
-              <boxGeometry args={[6.0, HEAD_H, 4.0]} />
-              <meshStandardMaterial color="#525c6d" roughness={0.3} metalness={0.85} />
-            </mesh>
+            <RoundedBox position={[0, FINGER_H + HEAD_H / 2, 0]} args={[6, HEAD_H, 4]} radius={0.3} smoothness={3} castShadow>
+              <meshStandardMaterial color="#d8e1f0" roughness={0.32} metalness={0.45} />
+            </RoundedBox>
+            {[-2.1, 2.1].map(x => <mesh key={x} position={[x, FINGER_H + HEAD_H / 2, 2.04]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.24, 0.24, 0.12, 6]} /><meshStandardMaterial color="#4c586d" roughness={0.25} metalness={0.85} />
+            </mesh>)}
             <mesh position={[0, FINGER_H + HEAD_H + 0.35, 0]} castShadow>
               <boxGeometry args={[4.4, 0.7, 3.0]} />
               <meshStandardMaterial color="#3a4351" roughness={0.4} metalness={0.7} />

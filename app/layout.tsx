@@ -15,14 +15,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Earshot — yell at your agent",
+  title: "Earshot — A little human. A lot more possible.",
   description:
     "A voice supervision and learning layer for autonomous agents. Corrections override the policy in under 300 ms, then distil into versioned rules.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0b0a09",
-  colorScheme: "dark",
+  themeColor: "#030509",
+  colorScheme: "light",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -54,19 +54,20 @@ export function Lights() {
   return (
     <>
       <StudioEnvironment />
-      <ambientLight intensity={0.34} color="#bcd0ff" />
-      <hemisphereLight args={["#93aaff", "#0b0e15", 0.6]} />
+      <ambientLight intensity={0.5} color="#e1eaff" />
+      <hemisphereLight args={["#d8e4ff", "#101724", 0.9]} />
 
       {/* key */}
       <directionalLight
         position={[26, 48, 30]}
-        intensity={2.5}
-        color="#fff1dc"
+        intensity={2.2}
+        color="#f3f5ff"
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
         shadow-bias={-0.0006}
         shadow-normalBias={0.06}
+        shadow-radius={3}
         shadow-camera-near={1}
         shadow-camera-far={160}
         shadow-camera-left={-50}
@@ -75,9 +76,9 @@ export function Lights() {
         shadow-camera-bottom={-50}
       />
       {/* cool fill from the opposite side — shapes the metal without a second shadow */}
-      <directionalLight position={[-40, 26, -18]} intensity={0.8} color="#8fb4ff" />
+      <directionalLight position={[-40, 26, -18]} intensity={0.8} color="#9dbdff" />
       {/* low back light, separates the gantry from the black background */}
-      <directionalLight position={[-6, 12, -46]} intensity={1.0} color="#6f8cff" />
+      <directionalLight position={[-6, 12, -46]} intensity={1.0} color="#699eff" />
 
       {/* warm pool centred on the work area */}
       <spotLight
@@ -88,7 +89,7 @@ export function Lights() {
         intensity={1900}
         distance={150}
         decay={1.6}
-        color="#ffdcb0"
+        color="#d7e3ff"
       />
 
       {/* pause rim light */}
