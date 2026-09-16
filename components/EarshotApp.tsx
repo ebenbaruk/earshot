@@ -44,14 +44,20 @@ export function EarshotApp() {
     if (hash) {
       // The console mounts a beat after the shell; retry a few times so a deep
       // link (/#experiment) lands on it even on a cold, slow load.
+      if ("scrollRestoration" in history) history.scrollRestoration = "manual";
       let attempts = 0;
       const jump = () => {
         const target = document.getElementById(hash);
         if (target) {
-          target.scrollIntoView({ behavior: "auto", block: "start" });
-          if (hash === "experiment") target.focus({ preventScroll: true });
+          const top = target.getBoundingClientRect().top;
+          // "instant": the page sets scroll-behavior: smooth, and a smooth
+          // scroll restarted every tick never lands.
+          if (Math.abs(top) > 8) target.scrollIntoView({ behavior: "instant", block: "start" });
+          if (hash === "experiment" && attempts === 0) target.focus({ preventScroll: true });
         }
-        if (attempts++ < 6) timer = setTimeout(jump, 250);
+        // Keep re-checking for a few seconds: the scene mounts late and the
+        // browser may restore its own scroll position after ours.
+        if (attempts++ < 24) timer = setTimeout(jump, 250);
       };
       timer = setTimeout(jump, 50);
     }
