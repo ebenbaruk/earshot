@@ -23,6 +23,9 @@ export interface SessionState {
   voiceReplies: boolean;
   /** True while the robot's own voice is playing; mic input is muted meanwhile. */
   speaking: boolean;
+  /** last line the robot said (shown on screen too, so recordings without system audio keep it) */
+  robotLine: string | null;
+  robotLineAt: number;
   /**
    * epoch ms when the newest policy version landed. The Policy panel uses it to
    * tell a fresh distillation (type the rules in) from one being browsed.
@@ -44,6 +47,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   activeRunId: null,
   voiceReplies: true,
   speaking: false,
+  robotLine: null,
+  robotLineAt: 0,
   lastDistilledAt: null,
   set: (patch) => set(patch),
 }));

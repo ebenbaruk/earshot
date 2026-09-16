@@ -77,6 +77,9 @@ export interface EarshotViewModel {
   lastCorrection: CorrectionEvent | null;
   /** True while the robot is speaking its acknowledgement (mic input is muted). */
   speaking: boolean;
+  /** what the robot last said, with the wall-clock time it said it (null when nothing yet) */
+  robotLine: string | null;
+  robotLineAt: number;
   /** Spoken acknowledgements on/off — the "Robot voice" overflow-menu item. */
   voiceReplies: boolean;
 

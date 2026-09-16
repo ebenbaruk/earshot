@@ -266,6 +266,12 @@ if (typeof window !== "undefined") {
 function say(line: string, opts: { requiresMic?: boolean } = {}): void {
   if (!session().voiceReplies) return;
   if (opts.requiresMic !== false && useVoiceStore.getState().status !== "listening") return;
+  const at = Date.now();
+  session().set({ robotLine: line, robotLineAt: at });
+  // Keep the line on screen ~3 s (state-driven, so the HUD stays a pure render).
+  setTimeout(() => {
+    if (session().robotLineAt === at) session().set({ robotLine: null });
+  }, 3200);
   speak(line);
 }
 

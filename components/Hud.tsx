@@ -243,7 +243,10 @@ function VoiceBar({
   vm: EarshotViewModel;
   actions: EarshotActions;
 }) {
-  if (vm.speaking) {
+  // The robot's line stays on screen ~3 s after it is said, so a recording
+  // that captures only the mic still shows what the robot answered.
+  const robotLineFresh = vm.robotLine != null;
+  if (vm.speaking || robotLineFresh) {
     return (
       <div className="flex items-center gap-2 rounded-md border border-info/45 bg-info/10 px-3 py-1.5 backdrop-blur">
         <span className="flex items-end gap-[2px]" aria-hidden>
@@ -252,7 +255,7 @@ function VoiceBar({
           <span className="dot-3 h-1.5 w-[3px] rounded-full bg-info" />
         </span>
         <span className="text-[12px] text-info">
-          robot speaking — mic muted
+          {vm.robotLine ? `robot: “${vm.robotLine}”` : "robot speaking — mic muted"}
         </span>
       </div>
     );

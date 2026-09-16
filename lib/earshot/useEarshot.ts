@@ -58,6 +58,8 @@ export function useEarshot(): { vm: EarshotViewModel; actions: EarshotActions } 
     stopFlash: session.stopFlash,
     lastCorrection: session.lastCorrection,
     speaking: session.speaking,
+    robotLine: session.robotLine,
+    robotLineAt: session.robotLineAt,
     voiceReplies: session.voiceReplies,
     corrections,
     runs: completedRuns,
