@@ -42,6 +42,12 @@ export const DEFAULT_KEYTERMS: readonly string[] = [
   "a bit",
   "a little",
   "a lot",
+  "egg",
+  "marker last",
+  "put the marker in last",
+  "lower it first",
+  "squeeze it first",
+  "a bit to the left",
 ] as const;
 
 /** Documented AssemblyAI streaming limits for `keyterms_prompt`. */
