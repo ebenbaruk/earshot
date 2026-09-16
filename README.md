@@ -52,7 +52,7 @@ Scripts: `pnpm test` (vitest), `pnpm typecheck`, `pnpm dry-run` (headless run of
 | `lib/corrections` | spoken correction → skill command (grammar first, LLM fallback) |
 | `lib/policy`, `lib/llm` | policy prompt, decisions, distillation, versions, LLM Gateway client |
 | `app/api/*` | token minting, policy, correction, distill route handlers (server-side key) |
-| `docs/` | contracts, pitch copy, demo storyboard |
+| `docs/` | module contracts and the design system |
 
 ## Design reference
 
