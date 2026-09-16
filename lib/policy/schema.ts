@@ -77,8 +77,17 @@ export const CORRECTION_PARSE_SCHEMA: JSONSchema = {
       type: "number",
       description: "0..1 confidence in the mapping.",
     },
+    order_object: {
+      type: ["string", "null"],
+      description:
+        "If the operator expressed an ORDER preference about one object (\"put the marker in last\", \"do the egg first\"), that object id: sponge | tape_holder | marker | egg. Otherwise null.",
+    },
+    order_position: {
+      type: ["string", "null"],
+      description: "\"first\" or \"last\" when order_object is set, otherwise null.",
+    },
   },
-  required: ["understood", "command", "confidence"],
+  required: ["understood", "command", "confidence", "order_object", "order_position"],
   additionalProperties: false,
 };
 export const CORRECTION_PARSE_SCHEMA_NAME = "correction_command";

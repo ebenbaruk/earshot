@@ -5,6 +5,8 @@ import type {
   CorrectionParseResponse,
   Observation,
 } from "@/lib/types";
+import { normalizeTargetId } from "@/lib/policy/command-codec";
+import type { ObjectId } from "@/lib/types";
 import { chatJSON, fastModel } from "@/lib/llm/gateway";
 import { tryToSkillCommand, type FlatCommand } from "@/lib/policy/command-codec";
 import { buildPolicyUserPrompt } from "@/lib/policy/prompt";
@@ -51,6 +53,8 @@ export async function llmParseCorrection(
     understood: boolean;
     command: FlatCommand;
     confidence: number;
+    order_object?: string | null;
+    order_position?: string | null;
   }>({
     model: opts.model ?? fastModel(),
     system: SYSTEM_PROMPT,
@@ -63,13 +67,21 @@ export async function llmParseCorrection(
     apiKey: opts.apiKey,
   });
 
-  if (!data.understood) return { command: null, confidence: 0 };
+  const orderHint: CorrectionParseResponse["orderHint"] = (() => {
+    const object = data.order_object ? normalizeTargetId(data.order_object) : null;
+    const position: "first" | "last" | null =
+      data.order_position === "first" || data.order_position === "last" ? data.order_position : null;
+    if (object && object !== "bag" && position) return { object: object as ObjectId, position };
+    return hint ?? null;
+  })();
+
+  if (!data.understood) return { command: null, confidence: 0, orderHint };
   const command = tryToSkillCommand(data.command);
-  if (!command) return { command: null, confidence: 0 };
+  if (!command) return { command: null, confidence: 0, orderHint };
 
   const confidence =
     typeof data.confidence === "number" && Number.isFinite(data.confidence)
       ? Math.min(1, Math.max(0, data.confidence))
       : 0.6;
-  return { command, confidence };
+  return { command, confidence, orderHint };
 }

@@ -17,6 +17,7 @@ export interface ParsedCorrection {
   source: ParseSource;
   confidence: number;
   latencyMs: number;
+  orderHint?: CorrectionParseResponse["orderHint"];
 }
 
 export interface ParseCorrectionOptions {
@@ -67,6 +68,7 @@ export async function parseCorrection(
       source: "llm",
       confidence: body.confidence ?? 0,
       latencyMs: Date.now() - startedAt,
+      orderHint: body.orderHint ?? null,
     };
   } catch {
     return {

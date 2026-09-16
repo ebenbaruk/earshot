@@ -271,6 +271,8 @@ export interface CorrectionParseRequest {
 export interface CorrectionParseResponse {
   command: SkillCommand | null;
   confidence: number; // 0..1
+  /** ordering preference understood from the utterance ("marker last"), if any */
+  orderHint?: { object: ObjectId; position: "first" | "last" } | null;
 }
 
 export interface DistillRequest {

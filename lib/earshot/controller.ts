@@ -34,7 +34,7 @@ import { requestDecisionWithMeta, requestDistill } from "@/lib/policy/client";
 import { fallbackDecision } from "@/lib/policy/fallback";
 import { extractOrderHint, parseCorrectionFast } from "@/lib/corrections/grammar";
 import { resolveOrderHint } from "@/lib/corrections/order";
-import { applyConstraints, cloneConstraints, deriveConstraints, emptyConstraints, learnFromCorrection, retryAfterNudge, type RunConstraints } from "./constraints";
+import { applyConstraints, cloneConstraints, deriveConstraints, emptyConstraints, learnFromCorrection, mergeConstraints, retryAfterNudge, type RunConstraints } from "./constraints";
 import { isDithering } from "./watchdog";
 import { parseCorrection } from "@/lib/corrections/parse";
 import { findStopWord, normalizeCorrection } from "@/lib/voice/stopwords";
@@ -163,7 +163,10 @@ async function decideWithBackoff(policy: PolicyVersion): Promise<PolicyDecision>
   if (Date.now() < gatewayCooldownUntil) {
     return fallbackDecision(obs); // reasoning is already tagged "[fallback]"
   }
-  const { decision, fallback } = await requestDecisionWithMeta(obs, policy);
+  // The policy prompt carries the operator facts learned so far in this run as
+  // standing instructions, on top of what the version already knows.
+  const withFacts: PolicyVersion = { ...policy, constraints: mergeConstraints(policy.constraints, constraints) };
+  const { decision, fallback } = await requestDecisionWithMeta(obs, withFacts);
   if (fallback) gatewayCooldownUntil = Date.now() + GATEWAY_COOLDOWN_MS;
   else gatewayCooldownUntil = 0;
   return decision;
@@ -377,12 +380,13 @@ async function applyCorrection(input: CorrectionInput): Promise<void> {
   const t0 = performance.now();
   let command: SkillCommand | null = parseCorrectionFast(text);
   let parseSource: ParseSource = input.source === "text" ? "text" : "grammar";
-  const orderHint = extractOrderHint(text);
+  let orderHint = extractOrderHint(text);
   const obsAtUtterance = e.getObservation();
   if (!command && orderHint) command = resolveOrderHint(orderHint, obsAtUtterance);
   if (!command) {
     const parsed = await parseCorrection(text, e.getObservation());
     command = parsed.command;
+    if (parsed.orderHint && !orderHint) orderHint = parsed.orderHint;
     if (input.source !== "text") parseSource = parsed.source;
   }
   const parseMs = performance.now() - t0;

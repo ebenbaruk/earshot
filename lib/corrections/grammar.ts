@@ -61,9 +61,10 @@ export function extractAmount(t: string): number {
 }
 
 const OBJECT_PATTERNS: Array<[ObjectId, RegExp]> = [
-  ["tape_holder", /\b(tape|tape holder|tape_holder|scotch|derouleur|devidoir|ruban|dispenser)\b/],
-  ["marker", /\b(marker|felt tip|felt-tip|sharpie|marqueur|feutre|stylo|pen)\b/],
-  ["sponge", /\b(sponge|eponge)\b/],
+  ["tape_holder", /\b(tape|tapes|tape holder|tape_holder|scotch|derouleur|devidoir|ruban|dispenser|roll)\b/],
+  ["marker", /\b(marker|markers|market|marca|mark her|felt tip|felt-tip|sharpie|marqueur|marquer|feutre|stylo|pen|pens)\b/],
+  ["sponge", /\b(sponge|sponges|spunge|eponge)\b/],
+  ["egg", /\b(egg|eggs|oeuf|uf)\b/],
 ];
 
 export function extractObject(t: string): ObjectId | null {

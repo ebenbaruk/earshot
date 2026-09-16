@@ -38,6 +38,22 @@ export function cloneConstraints(c: PolicyConstraints | undefined): RunConstrain
   };
 }
 
+/** Union of two constraint sets (run facts on top of the version's facts). */
+export function mergeConstraints(
+  base: PolicyConstraints | undefined,
+  extra: PolicyConstraints | undefined,
+): PolicyConstraints {
+  const out = cloneConstraints(base);
+  if (!extra) return out;
+  for (const [id, off] of Object.entries(extra.graspOffset ?? {})) {
+    if (off) out.graspOffset[id as ObjectId] = { ...off };
+  }
+  if (extra.deferLast) out.deferLast = extra.deferLast;
+  Object.assign(out.releaseLow, extra.releaseLow ?? {});
+  Object.assign(out.squeezeBefore, extra.squeezeBefore ?? {});
+  return out;
+}
+
 /** Human-readable lines for the Policy panel. */
 export function describeConstraints(c: PolicyConstraints | undefined): string[] {
   if (!c) return [];
@@ -172,15 +188,33 @@ export function applyConstraints(
     }
     if (preSteps.length) return { command, preSteps, followUp: null, note: `operator said: ${notes.join(", ")}` };
   }
-  if (command.skill === "move_to" && typeof command.target === "string" && command.target !== "bag") {
-    const target = command.target;
-    // "X last": while anything else remains, redirect to the nearest other object.
-    if (c.deferLast === target) {
-      const redirected = resolveOrderHint({ object: target, position: "last" }, obs);
-      if (redirected && redirected.skill === "move_to" && redirected.target !== target) {
-        return { ...applyConstraints(c, redirected, obs), note: `operator said: ${target} last` };
+  // "X last": any attempt to go for X while something else remains is redirected —
+  // whether the policy names it, aims at its coordinates, or is already over it.
+  if (c.deferLast) {
+    const others = obs.objects.filter((o) => o.id !== c.deferLast && (o.state === "on_table" || o.state === "rolled_out"));
+    const deferred = obs.objects.find((o) => o.id === c.deferLast);
+    const deferredRemaining = deferred && (deferred.state === "on_table" || deferred.state === "rolled_out");
+    if (others.length > 0 && deferredRemaining && !obs.gripper.holding) {
+      let aimsAtDeferred = false;
+      if (command.skill === "move_to") {
+        if (command.target === c.deferLast) aimsAtDeferred = true;
+        else if (typeof command.target === "object" && deferred) {
+          aimsAtDeferred = Math.hypot(command.target.x - deferred.estimatedPos.x, command.target.y - deferred.estimatedPos.y) < 5;
+        }
+      } else if (command.skill === "descend" || command.skill === "grasp" || command.skill === "nudge") {
+        aimsAtDeferred = objectNear(obs, 4) === c.deferLast;
+      }
+      if (aimsAtDeferred) {
+        const redirected = resolveOrderHint({ object: c.deferLast, position: "last" }, obs);
+        if (redirected && redirected.skill === "move_to" && redirected.target !== c.deferLast) {
+          return { ...applyConstraints({ ...c, deferLast: null }, redirected, obs), note: `operator said: ${c.deferLast} last` };
+        }
       }
     }
+  }
+
+  if (command.skill === "move_to" && typeof command.target === "string" && command.target !== "bag") {
+    const target = command.target;
     const off = c.graspOffset[target];
     if (off && (off.x !== 0 || off.y !== 0)) {
       return {

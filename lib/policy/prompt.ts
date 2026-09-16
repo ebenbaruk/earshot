@@ -72,6 +72,13 @@ export function buildPolicySystemPrompt(policy: PolicyVersion): string {
     );
   }
 
+  const facts = describeConstraintsForPrompt(policy.constraints);
+  if (facts.length > 0) {
+    parts.push(
+      `## Standing operator instructions\nThe human supervisor established these facts about THIS table. They are enforced by the low-level controller and you must plan with them:\n${facts.map((f) => `- ${f}`).join("\n")}`,
+    );
+  }
+
   if (policy.fewShots.length > 0) {
     const lines = policy.fewShots
       .map(
@@ -85,6 +92,18 @@ export function buildPolicySystemPrompt(policy: PolicyVersion): string {
   }
 
   return parts.join("\n\n");
+}
+
+function describeConstraintsForPrompt(c: PolicyVersion["constraints"]): string[] {
+  if (!c) return [];
+  const out: string[] = [];
+  if (c.deferLast) out.push(`${c.deferLast}: pack it LAST — never move_to(${c.deferLast}) while any other object is still on the table.`);
+  for (const [id, off] of Object.entries(c.graspOffset ?? {})) {
+    if (off && (off.x !== 0 || off.y !== 0)) out.push(`${id}: after move_to(${id}), the controller nudges by (${off.x}, ${off.y}) before you descend; do not undo it.`);
+  }
+  for (const id of Object.keys(c.releaseLow ?? {})) out.push(`${id}: descend before release over the bag.`);
+  for (const id of Object.keys(c.squeezeBefore ?? {})) out.push(`${id}: squeeze before release over the bag.`);
+  return out;
 }
 
 function describeOutcomeEntry(entry: {
