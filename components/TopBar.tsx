@@ -291,9 +291,16 @@ export function TopBar({
           <Button
             variant="ghost"
             onClick={() => actions.reset(Number(seedText) || vm.seed)}
-            title="Reset the world"
+            title="Reset the world (keeps what the policy learned)"
           >
             Reset
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => actions.clearAll()}
+            title="Hard reset: forget every run, correction and learned rule — back to policy v0"
+          >
+            Hard reset
           </Button>
           <label className="flex h-8 items-center gap-1.5 rounded-md border border-line bg-raised pr-1.5 pl-2.5">
             <span className="text-[11px] tracking-wider text-faint uppercase">

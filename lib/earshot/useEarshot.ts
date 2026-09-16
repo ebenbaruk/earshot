@@ -14,13 +14,9 @@ import { controller } from "./controller";
 
 export function useEarshot(): { vm: EarshotViewModel; actions: EarshotActions } {
   useEffect(() => {
-    // Runs left unfinished by a reload are noise: drop them once hydrated.
-    void Promise.resolve(useRunsStore.persist.rehydrate()).then(() => {
-      const active = useSessionStore.getState().activeRunId;
-      useRunsStore.setState((s) => ({
-        runs: s.runs.filter((r) => r.endedAt !== null || r.id === active),
-      }));
-    });
+    // Every page load is a fresh experiment: policy v0, no runs, no corrections.
+    // (Export/Import in the menu is the way to keep a session.)
+    controller.clearAll();
   }, []);
 
   const world = useSimStore((s) => s.world);
