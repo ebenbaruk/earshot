@@ -100,7 +100,7 @@ export interface ObjectSpec {
 export const OBJECT_SPECS: readonly ObjectSpec[] = [
   { id: "sponge", label: "Sponge", size: { w: 8, d: 5, h: 3 } },
   { id: "tape_holder", label: "Tape holder", size: { w: 7, d: 7, h: 3 } },
-  { id: "marker", label: "Marker", size: { w: 1.5, d: 12, h: 1.5 } },
+  { id: "marker", label: "Marker", size: { w: 1.5, d: 10, h: 1.5 } },
   { id: "egg", label: "Egg", size: { w: 4.5, d: 6, h: 4.5 } },
 ] as const;
 

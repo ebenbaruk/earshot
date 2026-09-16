@@ -42,13 +42,18 @@ export function EarshotApp() {
     const hash = window.location.hash.slice(1);
     let timer: ReturnType<typeof setTimeout> | null = null;
     if (hash) {
-      timer = setTimeout(() => {
+      // The console mounts a beat after the shell; retry a few times so a deep
+      // link (/#experiment) lands on it even on a cold, slow load.
+      let attempts = 0;
+      const jump = () => {
         const target = document.getElementById(hash);
         if (target) {
           target.scrollIntoView({ behavior: "auto", block: "start" });
           if (hash === "experiment") target.focus({ preventScroll: true });
         }
-      }, 50);
+        if (attempts++ < 6) timer = setTimeout(jump, 250);
+      };
+      timer = setTimeout(jump, 50);
     }
     return () => {
       observer.disconnect();

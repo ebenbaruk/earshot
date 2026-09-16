@@ -34,7 +34,7 @@ import { requestDecisionWithMeta, requestDistill } from "@/lib/policy/client";
 import { fallbackDecision } from "@/lib/policy/fallback";
 import { extractOrderHint, parseCorrectionFast } from "@/lib/corrections/grammar";
 import { resolveOrderHint } from "@/lib/corrections/order";
-import { applyConstraints, emptyConstraints, learnFromCorrection, retryAfterNudge, type RunConstraints } from "./constraints";
+import { applyConstraints, cloneConstraints, deriveConstraints, emptyConstraints, learnFromCorrection, retryAfterNudge, type RunConstraints } from "./constraints";
 import { isDithering } from "./watchdog";
 import { parseCorrection } from "@/lib/corrections/parse";
 import { findStopWord, normalizeCorrection } from "@/lib/voice/stopwords";
@@ -221,8 +221,10 @@ async function policyLoop(): Promise<void> {
       if (shaped.note) decision = { command: shaped.command, reasoning: `${decision.reasoning} [${shaped.note}]` };
       session().set({ decision });
       inFlightDecision = decision;
-      if (shaped.preStep) await execute(shaped.preStep);
+      for (const pre of shaped.preSteps) await execute(pre);
       const out = await execute(decision.command);
+      if (out === "rolled_out") say("The marker rolled out.");
+      if (out === "cracked") say("The egg cracked.");
       if (out === "ok" && (decision.command.skill === "grasp" || decision.command.skill === "release")) recentKeys = [];
       if (shaped.followUp && out === "ok" && engine().world.status === "running") {
         await execute(shaped.followUp);
@@ -232,7 +234,12 @@ async function policyLoop(): Promise<void> {
   } finally {
     loopRunning = false;
     inFlightDecision = null;
-    if (isTerminal(engine().world.status)) finishRun();
+    if (isTerminal(engine().world.status)) {
+      finishRun();
+      // Learning is automatic: a run that needed corrections distils them
+      // into the next policy version as soon as it ends.
+      if (controller.pendingCorrections().length > 0) void controller.distill();
+    }
   }
 }
 
@@ -481,7 +488,8 @@ export const controller = {
     }
     if (e.world.status === "idle") {
       recentKeys = [];
-      constraints = emptyConstraints();
+      // Start every run with the operator facts the current policy version carries.
+      constraints = cloneConstraints(usePolicyStore.getState().current().constraints);
       beginRun();
       useSimStore.getState().start();
     } else if (e.world.status === "paused") {
@@ -499,6 +507,7 @@ export const controller = {
     const s = session();
     const next = seed ?? s.seed;
     discardRun();
+    if (controller.pendingCorrections().length > 0) void controller.distill();
     loopEpoch++;
     engine().reset(next);
     frozenContext = null;
@@ -549,6 +558,8 @@ export const controller = {
     s.set({ distilling: true, distillError: null });
     try {
       const next = await requestDistill({ policy, corrections: pending, runs });
+      // The deterministic half of learning: operator facts the skill layer will enforce.
+      next.constraints = deriveConstraints(pending, policy.constraints);
       policyStore.addVersion(next);
       // `lastDistilledAt` is the cue the Policy panel waits on: it switches the
       // rail over and types the new rules in.

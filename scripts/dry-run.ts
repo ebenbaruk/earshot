@@ -22,7 +22,7 @@ import { fallbackDecision } from "../lib/policy/fallback";
 import { distill } from "../lib/policy/distill";
 import { extractOrderHint, parseCorrectionFast } from "../lib/corrections/grammar";
 import { resolveOrderHint } from "../lib/corrections/order";
-import { applyConstraints, emptyConstraints, learnFromCorrection, retryAfterNudge } from "../lib/earshot/constraints";
+import { applyConstraints, cloneConstraints, deriveConstraints, learnFromCorrection, retryAfterNudge } from "../lib/earshot/constraints";
 import { isDithering } from "../lib/earshot/watchdog";
 import { describeCommand } from "../lib/policy/command-codec";
 
@@ -76,7 +76,7 @@ const demoOperator: Operator = {
 async function runOnce(seed: number, policy: PolicyVersion, operator: Operator, runId: string) {
   const e = createEngine(seed);
   e.start();
-  const constraints = emptyConstraints();
+  const constraints = cloneConstraints(policy.constraints);
   const corrections: CorrectionEvent[] = [];
   const said = new Set<string>();
   let recent: string[] = [];
@@ -120,7 +120,7 @@ async function runOnce(seed: number, policy: PolicyVersion, operator: Operator, 
     if (isDithering(recent)) { decision = { ...fallbackDecision(obs), reasoning: "[override: looping]" }; recent = []; }
     const shaped = applyConstraints(constraints, decision.command, obs);
     inFlight = decision;
-    if (shaped.preStep) await runSkill(e, shaped.preStep);
+    for (const pre of shaped.preSteps) await runSkill(e, pre);
     const r = await runSkill(e, shaped.command);
     let outcome = r.outcome;
     if (shaped.followUp && outcome === "ok" && e.world.status === "running") outcome = (await runSkill(e, shaped.followUp)).outcome;
@@ -150,6 +150,8 @@ async function main() {
     let v1: PolicyVersion;
     try {
       v1 = await distill({ policy: BASE_POLICY, corrections: a.corrections, runs: [a.record] });
+      v1.constraints = deriveConstraints(a.corrections, BASE_POLICY.constraints);
+      console.log(`   skill-layer facts: ${JSON.stringify(v1.constraints)}`);
     } catch (err) {
       console.log(`   distill FAILED: ${(err as Error).message}`);
       rows.push(`seed ${String(seed).padEnd(4)} | v0+operator: ${a.status} ${a.record.stagesDone}/${OBJECT_COUNT}, ${a.record.interventions} corrections | distill failed`);

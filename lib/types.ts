@@ -159,6 +159,18 @@ export interface FewShot {
   addedInVersion: number;
 }
 
+/**
+ * Operator facts the skill layer keeps: learned from corrections, carried
+ * from one policy version to the next, applied deterministically at run time
+ * (the LLM rules explain them; these enforce them).
+ */
+export interface PolicyConstraints {
+  graspOffset: Partial<Record<ObjectId, Vec2>>; // "a bit to the left" while over X
+  deferLast: ObjectId | null; // "put X in last"
+  releaseLow: Partial<Record<ObjectId, true>>; // "lower it first" while holding X
+  squeezeBefore: Partial<Record<ObjectId, true>>; // "squeeze it first" while holding X
+}
+
 export interface PolicyVersion {
   version: number; // 0 = base policy
   createdAt: number; // epoch ms
@@ -167,6 +179,8 @@ export interface PolicyVersion {
   fewShots: FewShot[];
   changelog: string; // human readable, shown in the diff view
   distilledFrom: string[]; // CorrectionEvent ids consumed
+  /** operator facts kept by the skill layer (absent on v0 and on older saved versions) */
+  constraints?: PolicyConstraints;
 }
 
 // ---------------------------------------------------------------------------

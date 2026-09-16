@@ -1,5 +1,6 @@
 "use client";
 
+import { describeConstraints } from "@/lib/earshot/constraints";
 import clsx from "clsx";
 import { useEffect, useMemo, useState } from "react";
 import type { CorrectionEvent, PolicyRule, PolicyVersion } from "@/lib/types";
@@ -274,6 +275,20 @@ export function PolicyPanel({
           ))}
         </ul>
       )}
+
+      {/* operator facts the skill layer enforces */}
+      {describeConstraints(selected.constraints).length > 0 ? (
+        <div className="mt-5">
+          <div className="label mb-2">kept by the skill layer</div>
+          <ul className="flex flex-col gap-1">
+            {describeConstraints(selected.constraints).map((line) => (
+              <li key={line} className="font-mono text-[12px] text-ink">
+                <span className="text-ok">●</span> {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {/* few-shots, collapsed */}
       {selected.fewShots.length > 0 ? (

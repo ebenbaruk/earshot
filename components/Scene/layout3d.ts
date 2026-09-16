@@ -102,7 +102,7 @@ export const BAG_STACK_ORDER: readonly ObjectId[] = ["marker", "tape_holder", "s
 
 /** A small xy nudge per item so all four stay readable through the frosted wall. */
 export const BAG_OFFSET: Record<ObjectId, { x: number; y: number }> = {
-  marker: { x: 0.2, y: -0.4 },
+  marker: { x: 0, y: 0 },
   tape_holder: { x: -0.9, y: 1.1 },
   sponge: { x: 1.1, y: -1.4 },
   egg: { x: -0.5, y: -0.2 },
@@ -110,7 +110,7 @@ export const BAG_OFFSET: Record<ObjectId, { x: number; y: number }> = {
 
 /** Slight yaw inside the bag so the stack doesn't read as a machine-perfect tower. */
 export const BAG_YAW: Record<ObjectId, number> = {
-  marker: 0.06,
+  marker: 0,
   tape_holder: -0.22,
   sponge: 0.16,
   egg: 0.34,
