@@ -1,65 +1,134 @@
-# Earshot
+<p align="center">
+  <img src="docs/media/hero.png" alt="Earshot — A little human. A lot more possible." width="100%">
+</p>
 
-**Yell at your agent. It listens — and learns.**
+<h1 align="center">earshot✳</h1>
 
-Earshot is a voice supervision and learning layer for autonomous agents. An operator watches an agent work and corrects it out loud. The agent halts on "stop" in a few hundred milliseconds, executes the spoken correction, logs it with context, and later distills the corrections into its own policy so the next run needs fewer interventions.
+<p align="center"><strong>The voice supervision layer for autonomous agents.</strong><br>
+Say “stop, a bit to the left”. The robot halts in ~300 ms, obeys, logs the correction, and learns it as a rule.<br>
+Interventions 4 → 0 on the next run.</p>
 
-Built for the [AssemblyAI Voice Agent Hackathon](https://lablab.ai/ai-hackathons/assemblyai-voice-agent-hackathon) on:
+<p align="center">
+  <a href="https://earshot-virid.vercel.app/#experiment"><strong>Live demo</strong></a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#built-on-assemblyai">Built on AssemblyAI</a> ·
+  <a href="#run-it-locally">Run it locally</a>
+</p>
 
-- **AssemblyAI Universal-3.5 Pro streaming** (WebSocket v3): partial transcripts for the instant stop, keyterm biasing for the robot vocabulary, low-latency turn detection.
-- **AssemblyAI LLM Gateway** (Claude, structured outputs): the high-level policy that picks skills, the correction parser fallback, and the distillation step that turns corrections into policy rules.
+<p align="center"><em>Entry for the <a href="https://lablab.ai/ai-hackathons/assemblyai-voice-agent-hackathon">AssemblyAI Voice Agent Hackathon</a> (lablab.ai, September 2026).</em></p>
+
+---
+
+## The problem
+
+Every autonomous fleet keeps humans on standby. Waymo told the US Senate it runs about 70 remote assistants for roughly 3,000 vehicles. In robotic warehouses, the humans who handle exceptions decide throughput. Their corrections are the most valuable data those companies own, and today they evaporate the moment the ticket closes.
+
+**Interventions are the KPI everyone reports and nobody learns from.**
+
+## What Earshot does
+
+An operator watches an agent work and talks to it.
+
+| | |
+|---|---|
+| **Stop** | The word “stop” is caught on AssemblyAI **partial** transcripts, so the agent halts before the sentence is over (~250–300 ms). |
+| **Correct** | The rest of the sentence becomes a skill the agent executes now: `nudge(-1.5, 0)`, `squeeze()`, `descend()`, `move_to(tape_holder)`. Grammar first (sub-millisecond), LLM fallback for paraphrases. |
+| **Learn** | Every correction is logged with two seconds of prior state and the action the policy was about to take. When the run ends, the corrections are distilled into a new policy version: LLM rules with the quoted sentence as evidence, plus operator facts the skill layer enforces deterministically on every future run. |
+
+Voice is not the interface. It is the training signal.
+
+## The demo
+
+<p align="center"><img src="docs/media/console.jpg" alt="The Earshot console: a gantry gripper packing four objects, corrections logged on the right" width="100%"></p>
+
+A simulated gantry gripper packs four objects into a bag. Each object has a quirk the policy cannot perceive but any human can:
+
+| Object | Hidden quirk | What you say |
+|---|---|---|
+| Tape holder | only lifts by its ring, 2 cm left of the visual centre | **“Stop, a bit to the left.”** |
+| Egg | cracks if released from carry height (irreversible) | **“Stop, lower it first.”** (preventive) |
+| Sponge | too fat for the bag unless squeezed | **“Stop, squeeze it first.”** |
+| Marker | rolls out if anything lands on it | **“Stop, put the marker in last.”** |
+
+Run 1: the base policy fails on all four; you say four sentences; it finishes. The run ends, the robot says “I learned 4 rules.”, the Policy tab types them in. Run 2: same table, nobody talking, 4 / 4 packed with **zero** interventions.
+
+<p align="center"><img src="docs/media/policy.jpg" alt="Policy v1: rules with the human sentence as evidence" width="70%"></p>
+
+Measured headless with the real LLM policy and a scripted operator (`pnpm dry-run 42 7 99 123`): every seed completes run 1 with exactly four corrections and run 2 with none. Decisions ≈ 0.7 s, distillation ≈ 2 s.
+
+The **Metrics** tab turns the same numbers into the business reading: interventions per run, operator attention (seconds of human time per run), autonomy (share of the run with nobody attending), and robots one operator could watch at that rate.
 
 ## How it works
 
 ```
-   operator voice ──▶ Universal-3.5 Pro ──partial "stop"──▶ sim.pause()   (<300 ms)
-                                        └─final "a bit left"─▶ parse ──▶ sim.execute(nudge)
-   high-level policy (Claude, LLM Gateway) ──skill──▶ low-level skills (frozen) ──▶ world
-   correction log {2 s of state, rejected action, transcript, outcome}
-        └──▶ Distill (Claude, LLM Gateway) ──▶ policy v(n+1) = rules + few-shots (+ diff)
+operator voice ─▶ AssemblyAI Universal-3.5 Pro (WebSocket v3)
+                    ├─ partial "stop"  ──▶ sim.pause()                     reflex, ~300 ms
+                    └─ final sentence  ──▶ grammar | LLM ──▶ skill layer   correction, executed now
+                                                             │
+high-level policy (LLM, structured output) ──skill──▶ skill layer (frozen, deterministic) ──▶ world
+                                                             │
+correction log { transcript, 2 s of state, rejected action, outcome }
+                    └──▶ distillation (LLM) ──▶ policy v(n+1): rules + evidence + operator facts
 ```
 
-The demo world is a gantry gripper packing three objects into a bag. The world has quirks the policy cannot perceive but a human can (the tape lifts only by its ring, the sponge must be squeezed to fit, the marker rolls out unless packed last). The base policy fails on all three; after one round of corrections and a distillation, it succeeds unaided.
+- **Hierarchical policy.** An LLM chooses one skill at a time from a fixed library (`move_to`, `descend`, `grasp`, `lift`, `release`, `nudge`, `squeeze`, …) given a structured observation. The low-level skill layer is deterministic and never retrained. Learning happens in language. This is the loop Stanford/Berkeley showed on real robots in *Yell At Your Robot* (Shi et al., 2024); Earshot reproduces the loop, not their models.
+- **Two halves of learning.** The LLM distills corrections into readable rules (“WHEN holding the sponge above the bag DO squeeze before release — evidence: c3 ‘stop, squeeze it first’”). In parallel, the skill layer derives operator facts from the same corrections (grasp offsets, packing order, lower-before-release, squeeze-before-release) and enforces them on every run under that version, so the learned behaviour does not depend on the model following its own rules.
+- **Watchdogs.** If the model stalls, repeats itself or tries to stop early, a deterministic planner takes one step, badged `[override …]` in the HUD. The demo never freezes.
+- **The robot talks back.** Browser TTS acknowledges each correction (“Okay, a bit to the left.”, “Marker last, got it.”, “I learned 4 rules.”); the mic is muted while it speaks so its own voice is never transcribed as a correction.
 
-## Run it
+## Built on AssemblyAI
+
+Earshot uses the **Realtime Speech-to-Text** path (bring your own orchestration), because the reflex matters: the robot must not chat, it must obey in a few hundred milliseconds.
+
+| Feature | How Earshot uses it |
+|---|---|
+| Partial transcripts (`Turn`, `end_of_turn: false`) | the “stop” reflex fires on the first partial that contains a stop word |
+| `speech_model=universal-3-5-pro`, `mode=min_latency`, `min_turn_silence=100`, `max_turn_silence=800` | turn detection tuned for short commands, verified against the live API |
+| `keyterms_prompt` | robot vocabulary and the demo sentences biased in (“squeeze”, “tape holder”, “put the marker in last”) |
+| `ForceEndpoint` | a lone “stop” is finalised immediately instead of waiting for silence |
+| Temporary tokens (`/v3/token`) | the browser connects directly; the API key never leaves the server |
+| Multilingual | “Arrête, un peu à gauche” works live with no configuration |
+| Formatted finals | the correction text is stripped of stop words and filler before parsing |
+
+The policy, the correction parser and the distillation are OpenAI-style chat completions with strict JSON-schema outputs, so the LLM provider is a switch: AssemblyAI **LLM Gateway** (`EARSHOT_LLM_PROVIDER=assemblyai`) or Google Gemini through its OpenAI-compatible endpoint (`gemini`).
+
+## Run it locally
 
 ```bash
 pnpm install
-cp .env.example .env.local   # add your ASSEMBLYAI_API_KEY
+cp .env.example .env.local        # add ASSEMBLYAI_API_KEY (+ GEMINI_API_KEY or LLM Gateway access)
 pnpm dev
 ```
 
-Open http://localhost:3000, allow the microphone, press **Run**, and talk.
+Open `http://localhost:3000/#experiment`, allow the microphone, press **Start run**, and talk. The text box in the Corrections tab goes through the exact same pipeline if you would rather type.
 
-The policy, the correction parser and the distillation are plain OpenAI-style chat completions with JSON-schema structured outputs, so the LLM provider is pluggable:
+| Command | What it does |
+|---|---|
+| `pnpm test` | 192 unit tests (grammar, sim quirks, constraints, distillation merge, voice state machine) |
+| `pnpm typecheck` / `pnpm lint` | strict TypeScript, React Compiler lint rules |
+| `pnpm dry-run 42 7` | headless run 1 → distill → run 2 with the real LLM and a scripted operator; prints every decision |
+| `pnpm tsx scripts/policy-smoke.ts` | one decision, one rule, one distillation against the live LLM |
 
-| `EARSHOT_LLM_PROVIDER` | Endpoint | Default models (fast / smart) |
-|---|---|---|
-| `assemblyai` | AssemblyAI **LLM Gateway** (needs Claude entitlement on the account) | `claude-haiku-4-5-20251001` / `claude-sonnet-4-6` |
-| `gemini` | Google Gemini, OpenAI-compatible endpoint (`GEMINI_API_KEY`) | `gemini-3.5-flash-lite` / `gemini-3.8-flash` |
+Environment variables: `ASSEMBLYAI_API_KEY` (required), `GEMINI_API_KEY` or an LLM Gateway-entitled AssemblyAI account, `EARSHOT_LLM_PROVIDER`, `EARSHOT_FAST_MODEL`, `EARSHOT_SMART_MODEL`.
 
-`EARSHOT_FAST_MODEL` / `EARSHOT_SMART_MODEL` override the ids. If the LLM is unreachable the policy loop degrades to a deterministic local planner (badged `[fallback]` in the HUD) so a demo never stalls; two watchdogs also hand a single step to the planner when the LLM tries to stop early or repeats itself.
-
-Scripts: `pnpm test` (vitest), `pnpm typecheck`, `pnpm dry-run` (headless run of the full loop without a browser).
-
-## Repo map
+## Project structure
 
 | Folder | What |
 |---|---|
-| `lib/sim` | deterministic kinematic world, skill library, ring buffer |
-| `components/Scene` | react-three-fiber rendering of the world |
-| `lib/voice`, `public/worklets` | mic capture → PCM16 → AssemblyAI streaming; stop-word detection on partials |
-| `lib/corrections` | spoken correction → skill command (grammar first, LLM fallback) |
-| `lib/policy`, `lib/llm` | policy prompt, decisions, distillation, versions, LLM Gateway client |
-| `app/api/*` | token minting, policy, correction, distill route handlers (server-side key) |
+| `lib/voice`, `public/worklets` | mic → PCM16 16 kHz → AssemblyAI streaming; pure turn reducer with stop-word detection on partials |
+| `lib/corrections` | spoken correction → skill (grammar, order hints, LLM fallback) |
+| `lib/policy`, `lib/llm` | policy prompt, structured decisions, distillation, versions, provider-agnostic LLM client |
+| `lib/earshot` | the integration layer: policy loop, correction pipeline, run-scoped operator constraints, watchdogs, auto-learning |
+| `lib/sim`, `components/Scene` | deterministic kinematic world with the four quirks; react-three-fiber rendering |
+| `app/api/*` | token minting, policy, correction and distill route handlers (server-side keys) |
 | `docs/` | module contracts and the design system |
 
-## Design reference
+## What’s next
 
-[Brand & Design System](docs/DESIGN_SYSTEM.md) documents the visual direction, exact tokens, typography, components, motion, responsive rules, and the boundary between rendering and physics. It includes a reusable brief for another AI to recreate the same design language.
+- A ROS bridge on the same skill contract: the `SkillCommand` / `SkillOutcome` interface maps one-to-one to an action server.
+- Multi-operator sessions and fleet-wide rule sharing: one correction, every robot.
+- Fine-tuning a small policy model on the correction log and comparing it to the rule-based policy on the same seeds.
 
-## Next steps
+## License
 
-Real-robot bridge (the skill interface maps 1:1 to a ROS action server), multi-operator sessions, and swapping prompt-level distillation for actual fine-tuning of a small policy model on the same log.
-
-MIT — see LICENSE.
+MIT.
