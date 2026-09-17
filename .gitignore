@@ -42,3 +42,6 @@ next-env.d.ts
 
 # private working files (video takes, pitch deck, submission copy) — never published
 work/
+
+# the example env file carries no secrets and must be published
+!.env.example
